@@ -1,5 +1,3 @@
-// ─── TYPES ───────────────────────────────────────────────────────────────────
-
 export type PieceType = "king" | "queen" | "rook" | "bishop" | "knight" | "paladin";
 export type Color = "white" | "black";
 
@@ -8,14 +6,10 @@ export interface Piece {
   color: Color;
   id: string;
   hasMoved?: boolean;
-  paladanSuperUsed?: boolean;   // true = super attack already used, locked forever
+  paladanSuperUsed?: boolean;
 }
 
-export interface Square {
-  row: number;
-  col: number;
-}
-
+export interface Square { row: number; col: number; }
 export type Board = (Piece | null)[][];
 
 export interface GameState {
@@ -25,91 +19,52 @@ export interface GameState {
   capturedByBlack: Piece[];
   selectedSquare: Square | null;
   validMoves: Square[];
-  superMoves: Square[];          // ← NEW: super attack squares shown separately
-  superMoveMode: boolean;        // ← NEW: true = player pressed "Super Attack" button
+  superMoves: Square[];
+  superMoveMode: boolean;
   status: "playing" | "white_wins" | "black_wins" | "check";
   check: Color | null;
   lastMove: { from: Square; to: Square } | null;
-  passUsed: { white: boolean; black: boolean }; // Mexican Standoff — pass turn
+  passUsed: { white: boolean; black: boolean };
+  // UX enhancements
+  lastMoveQuality: "great" | "risky" | "normal" | null;
+  lastMoveTo: Square | null;
 }
 
-// ─── INITIAL BOARD ───────────────────────────────────────────────────────────
-
+// ─── INITIAL BOARD ────────────────────────────────────────────────────────────
 export function createInitialBoard(): Board {
-  const board: Board = Array(8).fill(null).map(() => Array(8).fill(null));
+  const b: Board = Array(8).fill(null).map(() => Array(8).fill(null));
+  const back: PieceType[] = ["rook","knight","bishop","king","queen","bishop","knight","rook"];
 
-  const backRow: PieceType[] = ["rook", "knight", "bishop", "king", "queen", "bishop", "knight", "rook"];
-
-  // Black — top (rows 0, 1)
-  backRow.forEach((type, col) => {
-    board[0][col] = {
-      type, color: "black",
-      id: `black-${type}-${col}`,
-      hasMoved: false,
-      paladanSuperUsed: false,
-    };
+  back.forEach((type, col) => {
+    b[0][col] = { type, color:"black", id:`b-${type}-${col}`, hasMoved:false, paladanSuperUsed:false };
+    b[7][col] = { type, color:"white", id:`w-${type}-${col}`, hasMoved:false, paladanSuperUsed:false };
   });
   for (let col = 0; col < 8; col++) {
-    board[1][col] = {
-      type: "paladin", color: "black",
-      id: `black-paladin-${col}`,
-      hasMoved: false,
-      paladanSuperUsed: false,
-    };
+    b[1][col] = { type:"paladin", color:"black", id:`b-pal-${col}`, hasMoved:false, paladanSuperUsed:false };
+    b[6][col] = { type:"paladin", color:"white", id:`w-pal-${col}`, hasMoved:false, paladanSuperUsed:false };
   }
-
-  // White — bottom (rows 6, 7)
-  for (let col = 0; col < 8; col++) {
-    board[6][col] = {
-      type: "paladin", color: "white",
-      id: `white-paladin-${col}`,
-      hasMoved: false,
-      paladanSuperUsed: false,
-    };
-  }
-  backRow.forEach((type, col) => {
-    board[7][col] = {
-      type, color: "white",
-      id: `white-${type}-${col}`,
-      hasMoved: false,
-      paladanSuperUsed: false,
-    };
-  });
-
-  return board;
+  return b;
 }
 
 export function createInitialGameState(): GameState {
   return {
     board: createInitialBoard(),
     currentTurn: "white",
-    capturedByWhite: [],
-    capturedByBlack: [],
-    selectedSquare: null,
-    validMoves: [],
-    superMoves: [],
-    superMoveMode: false,
-    status: "playing",
-    check: null,
-    lastMove: null,
-    passUsed: { white: false, black: false },
+    capturedByWhite: [], capturedByBlack: [],
+    selectedSquare: null, validMoves: [], superMoves: [], superMoveMode: false,
+    status: "playing", check: null, lastMove: null,
+    passUsed: { white:false, black:false },
+    lastMoveQuality: null, lastMoveTo: null,
   };
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
-
-export function inBounds(row: number, col: number): boolean {
-  return row >= 0 && row < 8 && col >= 0 && col < 8;
-}
-
-export function squareEquals(a: Square, b: Square): boolean {
-  return a.row === b.row && a.col === b.col;
-}
+export const inBounds = (r: number, c: number) => r >= 0 && r < 8 && c >= 0 && c < 8;
+export const squareEquals = (a: Square, b: Square) => a.row === b.row && a.col === b.col;
 
 export function cloneBoard(board: Board): Board {
-  return board.map(row => row.map(cell => (cell ? { ...cell } : null)));
+  return board.map(row => row.map(cell => cell ? { ...cell } : null));
 }
-
 export function cloneGameState(state: GameState): GameState {
   return {
     ...state,
@@ -122,201 +77,337 @@ export function cloneGameState(state: GameState): GameState {
   };
 }
 
-// ─── MOVE GENERATION ─────────────────────────────────────────────────────────
+// ─── PIECE VALUES ────────────────────────────────────────────────────────────
+const PIECE_VALUE: Record<PieceType, number> = {
+  king: 100, queen: 9, rook: 5, bishop: 3, knight: 3, paladin: 2,
+};
 
-function getSlidingMoves(board: Board, row: number, col: number, dirs: [number, number][]): Square[] {
+// ─── MOVE GENERATION ─────────────────────────────────────────────────────────
+function slide(board: Board, row: number, col: number, dirs: [number,number][]): Square[] {
   const piece = board[row][col]!;
   const moves: Square[] = [];
   for (const [dr, dc] of dirs) {
     let r = row + dr, c = col + dc;
     while (inBounds(r, c)) {
-      if (board[r][c] === null) {
-        moves.push({ row: r, col: c });
-      } else {
-        if (board[r][c]!.color !== piece.color) moves.push({ row: r, col: c });
-        break;
-      }
+      if (!board[r][c]) { moves.push({ row:r, col:c }); }
+      else { if (board[r][c]!.color !== piece.color) moves.push({ row:r, col:c }); break; }
       r += dr; c += dc;
     }
   }
   return moves;
 }
 
-// Normal moves only (no super)
 export function getNormalMoves(board: Board, row: number, col: number): Square[] {
-  const piece = board[row][col];
-  if (!piece) return [];
-
+  const piece = board[row][col]; if (!piece) return [];
   const moves: Square[] = [];
 
   switch (piece.type) {
     case "king": {
-      const dirs = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
-      for (const [dr, dc] of dirs) {
-        const r = row + dr, c = col + dc;
-        if (inBounds(r, c) && board[r][c]?.color !== piece.color)
-          moves.push({ row: r, col: c });
-      }
+      const dirs: [number,number][] = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+      dirs.forEach(([dr,dc]) => {
+        const r=row+dr, c=col+dc;
+        if (inBounds(r,c) && board[r][c]?.color !== piece.color) moves.push({row:r,col:c});
+      });
       break;
     }
-    case "queen": {
-      moves.push(...getSlidingMoves(board, row, col, [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]]));
+    case "queen":
+      moves.push(...slide(board,row,col,[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]]));
       break;
-    }
-    case "rook": {
-      moves.push(...getSlidingMoves(board, row, col, [[-1,0],[1,0],[0,-1],[0,1]]));
+    case "rook":
+      moves.push(...slide(board,row,col,[[-1,0],[1,0],[0,-1],[0,1]]));
       break;
-    }
-    case "bishop": {
-      moves.push(...getSlidingMoves(board, row, col, [[-1,-1],[-1,1],[1,-1],[1,1]]));
+    case "bishop":
+      moves.push(...slide(board,row,col,[[-1,-1],[-1,1],[1,-1],[1,1]]));
       break;
-    }
     case "knight": {
-      const jumps = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
-      for (const [dr, dc] of jumps) {
-        const r = row + dr, c = col + dc;
-        if (inBounds(r, c) && board[r][c]?.color !== piece.color)
-          moves.push({ row: r, col: c });
-      }
+      const jumps: [number,number][] = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+      jumps.forEach(([dr,dc]) => {
+        const r=row+dr, c=col+dc;
+        if (inBounds(r,c) && board[r][c]?.color !== piece.color) moves.push({row:r,col:c});
+      });
       break;
     }
     case "paladin": {
-      // NORMAL only: 1 square any direction
-      const dirs = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
-      for (const [dr, dc] of dirs) {
-        const r = row + dr, c = col + dc;
-        if (inBounds(r, c) && board[r][c]?.color !== piece.color)
-          moves.push({ row: r, col: c });
-      }
-      // ← NO super moves here — super moves are separate
+      const dirs: [number,number][] = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+      dirs.forEach(([dr,dc]) => {
+        const r=row+dr, c=col+dc;
+        if (inBounds(r,c) && board[r][c]?.color !== piece.color) moves.push({row:r,col:c});
+      });
       break;
     }
   }
-
   return moves;
 }
 
-// Super moves only — paladin exclusive, once per paladin lifetime
 export function getSuperMoves(board: Board, row: number, col: number): Square[] {
   const piece = board[row][col];
-  if (!piece || piece.type !== "paladin") return [];
-
-  // Already used super? Locked forever — return empty
-  if (piece.paladanSuperUsed) return [];
-
+  if (!piece || piece.type !== "paladin" || piece.paladanSuperUsed) return [];
   const moves: Square[] = [];
-  const dirs = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
-
+  const dirs: [number,number][] = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
   for (const [dr, dc] of dirs) {
     const r = row + dr * 2, c = col + dc * 2;
-    if (!inBounds(r, c)) continue;
-    if (board[r][c]?.color === piece.color) continue; // can't land on own piece
-
+    if (!inBounds(r, c) || board[r][c]?.color === piece.color) continue;
     const isStraight = Math.abs(dr) + Math.abs(dc) === 1;
-
     if (isStraight) {
-      // Straight 2 squares: can jump over middle (surprise attack — always allowed)
-      moves.push({ row: r, col: c });
+      moves.push({ row:r, col:c }); // can jump
     } else {
-      // Diagonal 2 squares: mid must be clear
       const midR = row + dr, midC = col + dc;
-      if (!board[midR][midC]) {
-        moves.push({ row: r, col: c });
-      }
+      if (!board[midR][midC]) moves.push({ row:r, col:c });
     }
   }
-
   return moves;
 }
 
-// ─── LEGAL MOVES (filters moves that leave own king in check) ────────────────
+// ─── CHECK DETECTION ─────────────────────────────────────────────────────────
+export function isKingInCheck(board: Board, color: Color): boolean {
+  let kr = -1, kc = -1;
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++)
+      if (board[r][c]?.type === "king" && board[r][c]?.color === color) { kr=r; kc=c; }
+  if (kr === -1) return false;
+  const enemy = color === "white" ? "black" : "white";
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++)
+      if (board[r][c]?.color === enemy) {
+        const all = [...getNormalMoves(board,r,c), ...getSuperMoves(board,r,c)];
+        if (all.some(m => m.row === kr && m.col === kc)) return true;
+      }
+  return false;
+}
+
+// export function getLegalMoves(board: Board, row: number, col: number): Square[] {
+//   const piece = board[row][col]; if (!piece) return [];
+//   return getNormalMoves(board,row,col).filter(move => {
+//     const t = cloneBoard(board);
+//     t[move.row][move.col] = t[row][col]; t[row][col] = null;
+//     return !isKingInCheck(t, piece.color);
+//   });
+// }
 
 export function getLegalMoves(board: Board, row: number, col: number): Square[] {
   const piece = board[row][col];
   if (!piece) return [];
-  const raw = getNormalMoves(board, row, col);
-  return raw.filter(move => {
-    const testBoard = cloneBoard(board);
-    testBoard[move.row][move.col] = testBoard[row][col];
-    testBoard[row][col] = null;
-    return !isKingInCheck(testBoard, piece.color);
-  });
+  return getNormalMoves(board, row, col);
 }
+
+// export function getLegalSuperMoves(board: Board, row: number, col: number): Square[] {
+//   const piece = board[row][col]; if (!piece) return [];
+//   return getSuperMoves(board,row,col).filter(move => {
+//     const t = cloneBoard(board);
+//     t[move.row][move.col] = t[row][col]; t[row][col] = null;
+//     return !isKingInCheck(t, piece.color);
+//   });
+// }
+
 
 export function getLegalSuperMoves(board: Board, row: number, col: number): Square[] {
   const piece = board[row][col];
   if (!piece) return [];
-  const raw = getSuperMoves(board, row, col);
-  return raw.filter(move => {
-    const testBoard = cloneBoard(board);
-    testBoard[move.row][move.col] = testBoard[row][col];
-    testBoard[row][col] = null;
-    return !isKingInCheck(testBoard, piece.color);
-  });
-}
-
-// ─── CHECK DETECTION ─────────────────────────────────────────────────────────
-
-export function isKingInCheck(board: Board, color: Color): boolean {
-  let kingRow = -1, kingCol = -1;
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
-      if (board[r][c]?.type === "king" && board[r][c]?.color === color) {
-        kingRow = r; kingCol = c;
-      }
-    }
-  }
-  if (kingRow === -1) return false;
-
-  const enemy = color === "white" ? "black" : "white";
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
-      if (board[r][c]?.color === enemy) {
-        // Check both normal and super moves of enemy
-        const allMoves = [
-          ...getNormalMoves(board, r, c),
-          ...getSuperMoves(board, r, c),
-        ];
-        if (allMoves.some(m => m.row === kingRow && m.col === kingCol)) return true;
-      }
-    }
-  }
-  return false;
+  return getSuperMoves(board, row, col);
 }
 
 export function isCheckmate(board: Board, color: Color): boolean {
   if (!isKingInCheck(board, color)) return false;
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
-      if (board[r][c]?.color === color) {
-        if (getLegalMoves(board, r, c).length > 0) return false;
-        if (getLegalSuperMoves(board, r, c).length > 0) return false;
-      }
-    }
-  }
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++)
+      if (board[r][c]?.color === color)
+        if (getLegalMoves(board,r,c).length > 0 || getLegalSuperMoves(board,r,c).length > 0) return false;
   return true;
 }
 
-// ─── MOVE EXECUTION ──────────────────────────────────────────────────────────
+// ─── STALEMATE ───────────────────────────────────────────────────────────────
+export function isStalemate(board: Board, color: Color): boolean {
+  if (isKingInCheck(board, color)) return false;
+  for (let r = 0; r < 8; r++)
+    for (let c = 0; c < 8; c++)
+      if (board[r][c]?.color === color)
+        if (getLegalMoves(board,r,c).length > 0 || getLegalSuperMoves(board,r,c).length > 0) return false;
+  return true;
+}
+
+// ─── MOVE QUALITY EVALUATOR ──────────────────────────────────────────────────
+// function evaluateMoveQuality(
+//   board: Board, from: Square, to: Square,
+//   piece: Piece, captured: Piece | null,
+//   newBoard: Board, color: Color
+// ): "great" | "risky" | "normal" {
+//   let score = 0;
+//   const enemy = color === "white" ? "black" : "white";
+
+//   // Captured a piece = good
+//   if (captured) score += PIECE_VALUE[captured.type] * 2;
+
+//   // Checking the enemy king = great
+//   if (isKingInCheck(newBoard, enemy)) score += 5;
+
+//   // Own king now in check = very bad
+//   if (isKingInCheck(newBoard, color)) score -= 10;
+
+//   // Moving king to threatened square = risky
+//   if (piece.type === "king") {
+//     let threatened = 0;
+//     for (let r = 0; r < 8; r++)
+//       for (let c = 0; c < 8; c++) {
+//         const ep = newBoard[r][c];
+//         if (ep && ep.color === enemy) {
+//           if (getNormalMoves(newBoard,r,c).some(m => squareEquals(m,to))) threatened++;
+//         }
+//       }
+//     if (threatened > 0) score -= 7;
+//   }
+
+//   // Moving valuable piece to threatened square = risky
+//   if (PIECE_VALUE[piece.type] >= 5) {
+//     for (let r = 0; r < 8; r++)
+//       for (let c = 0; c < 8; c++) {
+//         const ep = newBoard[r][c];
+//         if (ep && ep.color === enemy) {
+//           if (getNormalMoves(newBoard,r,c).some(m => squareEquals(m,to))) { score -= 4; break; }
+//         }
+//       }
+//   }
+
+//   // Centre control bonus (for early game)
+//   const centre = [{row:3,col:3},{row:3,col:4},{row:4,col:3},{row:4,col:4}];
+//   if (centre.some(s => squareEquals(s, to)) && !piece.hasMoved) score += 2;
+
+//   if (score >= 4) return "great";
+//   if (score <= -4) return "risky";
+//   return "normal";
+// }
+
+
+function evaluateMoveQuality(
+  board: Board,
+  from: Square,
+  to: Square,
+  piece: Piece,
+  captured: Piece | null,
+  newBoard: Board,
+  color: Color
+): "great" | "risky" | "normal" {
+  let score = 0;
+  const enemy = color === "white" ? "black" : "white";
+
+  if (captured) score += PIECE_VALUE[captured.type] * 2;
+
+  // Valuable piece moved into danger
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const ep = newBoard[r][c];
+      if (!ep || ep.color !== enemy) continue;
+
+      const threatens =
+        getNormalMoves(newBoard, r, c).some(m => squareEquals(m, to)) ||
+        getSuperMoves(newBoard, r, c).some(m => squareEquals(m, to));
+
+      if (threatens) {
+        score -= PIECE_VALUE[piece.type] >= 5 ? 4 : 2;
+        break;
+      }
+    }
+  }
+
+  const centre = [
+    { row: 3, col: 3 },
+    { row: 3, col: 4 },
+    { row: 4, col: 3 },
+    { row: 4, col: 4 },
+  ];
+
+  if (centre.some(s => squareEquals(s, to)) && !piece.hasMoved) score += 2;
+
+  if (score >= 4) return "great";
+  if (score <= -4) return "risky";
+  return "normal";
+}
+
+// ─── EXECUTE MOVE ─────────────────────────────────────────────────────────────
+// export function executeMove(
+//   state: GameState, from: Square, to: Square, isSuper = false
+// ): GameState {
+//   const ns = cloneGameState(state);
+//   const board = ns.board;
+//   const piece = board[from.row][from.col]!;
+//   const target = board[to.row][to.col];
+
+//   if (target) {
+//     if (piece.color === "white") ns.capturedByWhite.push(target);
+//     else ns.capturedByBlack.push(target);
+//   }
+
+//   // Evaluate quality BEFORE move
+//   const newBoardPreview = cloneBoard(board);
+//   newBoardPreview[to.row][to.col] = piece;
+//   newBoardPreview[from.row][from.col] = null;
+//   ns.lastMoveQuality = evaluateMoveQuality(board, from, to, piece, target, newBoardPreview, piece.color);
+//   ns.lastMoveTo = to;
+
+//   board[to.row][to.col] = {
+//     ...piece, hasMoved: true,
+//     paladanSuperUsed: isSuper ? true : piece.paladanSuperUsed,
+//   };
+//   board[from.row][from.col] = null;
+
+//   ns.lastMove = { from, to };
+//   ns.selectedSquare = null;
+//   ns.validMoves = [];
+//   ns.superMoves = [];
+//   ns.superMoveMode = false;
+
+//   const next: Color = piece.color === "white" ? "black" : "white";
+//   ns.currentTurn = next;
+
+//   if (isCheckmate(board, next)) {
+//     ns.status = piece.color === "white" ? "white_wins" : "black_wins";
+//   } else if (isStalemate(board, next)) {
+//     // Stalemate = draw, treat as playing for now
+//     ns.status = "playing";
+//     ns.check = null;
+//   } else if (isKingInCheck(board, next)) {
+//     ns.check = next;
+//     ns.status = "check";
+//   } else {
+//     ns.check = null;
+//     ns.status = "playing";
+//   }
+
+//   return ns;
+// }
+
+
 
 export function executeMove(
   state: GameState,
   from: Square,
   to: Square,
-  isSuper = false,   // ← NEW flag: was this a super move?
+  isSuper = false
 ): GameState {
-  const newState = cloneGameState(state);
-  const board = newState.board;
+  const ns = cloneGameState(state);
+  const board = ns.board;
   const piece = board[from.row][from.col]!;
   const target = board[to.row][to.col];
 
-  // Capture
   if (target) {
-    if (piece.color === "white") newState.capturedByWhite.push(target);
-    else newState.capturedByBlack.push(target);
+    if (piece.color === "white") ns.capturedByWhite.push(target);
+    else ns.capturedByBlack.push(target);
   }
 
-  // If super move — permanently mark this paladin
+  const newBoardPreview = cloneBoard(board);
+  newBoardPreview[to.row][to.col] = piece;
+  newBoardPreview[from.row][from.col] = null;
+
+  ns.lastMoveQuality = evaluateMoveQuality(
+    board,
+    from,
+    to,
+    piece,
+    target,
+    newBoardPreview,
+    piece.color
+  );
+  ns.lastMoveTo = to;
+
   board[to.row][to.col] = {
     ...piece,
     hasMoved: true,
@@ -324,46 +415,58 @@ export function executeMove(
   };
   board[from.row][from.col] = null;
 
-  newState.lastMove = { from, to };
-  newState.selectedSquare = null;
-  newState.validMoves = [];
-  newState.superMoves = [];
-  newState.superMoveMode = false;
+  ns.lastMove = { from, to };
+  ns.selectedSquare = null;
+  ns.validMoves = [];
+  ns.superMoves = [];
+  ns.superMoveMode = false;
 
-  // Switch turn
-  const nextTurn: Color = piece.color === "white" ? "black" : "white";
-  newState.currentTurn = nextTurn;
+  const winner = getWinnerByElimination(board);
 
-  // Check / Checkmate
-  if (isCheckmate(board, nextTurn)) {
-    newState.status = piece.color === "white" ? "white_wins" : "black_wins";
-  } else if (isKingInCheck(board, nextTurn)) {
-    newState.check = nextTurn;
-    newState.status = "check";
-  } else {
-    newState.check = null;
-    newState.status = "playing";
+  if (winner) {
+    ns.status = winner;
+    ns.check = null;
+    return ns;
   }
 
-  return newState;
-}
+  ns.currentTurn = piece.color === "white" ? "black" : "white";
+  ns.status = "playing";
+  ns.check = null;
 
+  return ns;
+}
 // ─── PASS TURN (Mexican Standoff) ────────────────────────────────────────────
-// Player can pass their turn once per game — "hit the clock"
-
 export function passTurn(state: GameState): GameState {
-  const newState = cloneGameState(state);
+  const ns = cloneGameState(state);
   const color = state.currentTurn;
-
-  // Can only pass once per player
-  if (newState.passUsed[color]) return state; // already used, ignore
-
-  newState.passUsed[color] = true;
-  newState.currentTurn = color === "white" ? "black" : "white";
-  newState.selectedSquare = null;
-  newState.validMoves = [];
-  newState.superMoves = [];
-  newState.superMoveMode = false;
-
-  return newState;
+  if (ns.passUsed[color]) return state;
+  ns.passUsed[color] = true;
+  ns.currentTurn = color === "white" ? "black" : "white";
+  ns.selectedSquare = null;
+  ns.validMoves = [];
+  ns.superMoves = [];
+  ns.superMoveMode = false;
+  ns.lastMoveQuality = null;
+  ns.lastMoveTo = null;
+  return ns;
 }
+
+function countPieces(board: Board, color: Color): number {
+  let count = 0;
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      if (board[r][c]?.color === color) count++;
+    }
+  }
+  return count;
+}
+
+function getWinnerByElimination(board: Board): "white_wins" | "black_wins" | null {
+  const whiteCount = countPieces(board, "white");
+  const blackCount = countPieces(board, "black");
+
+  if (whiteCount === 0) return "black_wins";
+  if (blackCount === 0) return "white_wins";
+  return null;
+}
+

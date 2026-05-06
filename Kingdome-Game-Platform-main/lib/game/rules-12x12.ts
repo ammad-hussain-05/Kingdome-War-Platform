@@ -1,5 +1,3 @@
-// ─── TYPES ───────────────────────────────────────────────────────────────────
-
 export type PlayerColor = "white" | "black" | "grey";
 
 export type PieceType12 =
@@ -8,692 +6,286 @@ export type PieceType12 =
   | "executioner" | "cavalier" | "mage" | "elvin-archer" | "paladin";
 
 export interface Piece12 {
-  id: string;
-  type: PieceType12;
-  color: PlayerColor;
-  hasMoved: boolean;
-  paladanSuperUsed: boolean;
-  superKnightJumpsLeft: number;
-  sorceressSpellsLeft: number;
-  sorceressDead: boolean;
-  sleepRoundsLeft: number;
-  isEthereal: boolean;
-  executionerAxeUsed: boolean;
-  superQueenDoubleJumpDone: boolean;
-  mageSacrificed: boolean;
+  id: string; type: PieceType12; color: PlayerColor;
+  hasMoved: boolean; paladanSuperUsed: boolean; superKnightJumpsLeft: number;
+  sorceressSpellsLeft: number; sorceressDead: boolean; sleepRoundsLeft: number;
+  isEthereal: boolean; executionerAxeUsed: boolean;
+  superQueenDoubleJumpDone: boolean; mageSacrificed: boolean;
 }
 
-// Wing identifies which of the 3 boards a square belongs to, or "center" for the bridge
-export type Wing = "white" | "black" | "grey" | "center";
-
-export interface Square12 {
-  row: number;
-  col: number;
-  wing: Wing;
-}
-
-export type WingBoard = (Piece12 | null)[][];
-
-export interface TriBoard {
-  white: WingBoard;  // 12x12 grid for white's wing
-  black: WingBoard;  // 12x12 grid for black's wing
-  grey: WingBoard;   // 12x12 grid for grey's wing
-  center: (Piece12 | null)[][]; // triangular bridge zone (6 rows, variable cols)
-}
+export interface Square12 { row: number; col: number; }
+export type Board12 = (Piece12 | null)[][];
 
 export type SpecialMode =
-  | null
-  | "wizard-teleport-select-piece"
-  | "wizard-teleport-select-dest"
-  | "sorceress-sleep-select"
-  | "sorceress-teleport-select"
-  | "executioner-axe-swing"
-  | "mage-sacrifice-confirm"
-  | "super-queen-second-move"
-  | "king-morph-confirm";
+  | null | "wizard-teleport-select-piece" | "wizard-teleport-select-dest"
+  | "sorceress-sleep-select" | "sorceress-teleport-select"
+  | "executioner-axe-swing" | "super-queen-second-move";
 
 export interface GameState12 {
-  board: TriBoard;
-  currentTurn: PlayerColor;
-  turnOrder: PlayerColor[];
+  board: Board12; currentTurn: PlayerColor;
+  turnOrder: PlayerColor[];       // living players only
   eliminatedPlayers: PlayerColor[];
   capturedBy: Record<PlayerColor, Piece12[]>;
-  selectedSquare: Square12 | null;
-  validMoves: Square12[];
-  status: "playing" | "finished";
-  winner: PlayerColor | null;
+  selectedSquare: Square12 | null; validMoves: Square12[];
+  status: "playing" | "finished"; winner: PlayerColor | null;
   lastMove: { from: Square12; to: Square12 } | null;
   check: PlayerColor | null;
-  specialMode: SpecialMode;
-  specialData: any;
-  wishDiceResult: number | null;
-  turnMovesLeft: number;
-  pendingAxeSquare: Square12 | null;
-  spellMessage: string | null;
+  specialMode: SpecialMode; specialData: any;
+  wishDiceResult: number | null; turnMovesLeft: number;
+  pendingAxeSquare: Square12 | null; spellMessage: string | null;
+  // Move quality for UX feedback
+  lastMoveQuality: "great" | "risky" | "normal" | null;
+  // Elimination event for popup
+  justEliminated: PlayerColor | null;
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
+export const sq12Eq = (a: Square12, b: Square12) => a.row === b.row && a.col === b.col;
+export const inB = (r: number, c: number) => r >= 0 && r < 12 && c >= 0 && c < 12;
 
-export function sq12Eq(a: Square12, b: Square12): boolean {
-  return a.row === b.row && a.col === b.col && a.wing === b.wing;
+export function cloneBoard12(b: Board12): Board12 {
+  return b.map(row => row.map(cell => cell ? { ...cell } : null));
 }
-
-export function inBoundsWing(r: number, c: number): boolean {
-  return r >= 0 && r < 12 && c >= 0 && c < 12;
-}
-
-// Center bridge: 6 rows. Row 0 has 1 cell, row 1 has 3, row 2 has 5, etc.
-// Each row i has (2*i + 1) cells
-export function centerRowWidth(row: number): number {
-  return 2 * row + 1;
-}
-
-export function inBoundsCenter(r: number, c: number): boolean {
-  if (r < 0 || r >= 6) return false;
-  return c >= 0 && c < centerRowWidth(r);
-}
-
-export function cloneWingBoard(board: WingBoard): WingBoard {
-  return board.map(row => row.map(cell => cell ? { ...cell } : null));
-}
-
-export function cloneTriBoard(board: TriBoard): TriBoard {
+export function cloneState12(s: GameState12): GameState12 {
   return {
-    white: cloneWingBoard(board.white),
-    black: cloneWingBoard(board.black),
-    grey: cloneWingBoard(board.grey),
-    center: board.center.map(row => row.map(cell => cell ? { ...cell } : null)),
+    ...s, board: cloneBoard12(s.board),
+    turnOrder: [...s.turnOrder], eliminatedPlayers: [...s.eliminatedPlayers],
+    capturedBy: { white:[...s.capturedBy.white], black:[...s.capturedBy.black], grey:[...s.capturedBy.grey] },
+    validMoves: [...s.validMoves],
+    specialData: s.specialData ? { ...s.specialData } : null,
   };
 }
 
-export function cloneState12(state: GameState12): GameState12 {
-  return {
-    ...state,
-    board: cloneTriBoard(state.board),
-    turnOrder: [...state.turnOrder],
-    eliminatedPlayers: [...state.eliminatedPlayers],
-    capturedBy: {
-      white: [...state.capturedBy.white],
-      black: [...state.capturedBy.black],
-      grey: [...state.capturedBy.grey],
-    },
-    validMoves: [...state.validMoves],
-    specialData: state.specialData ? { ...state.specialData } : null,
+export function pieceImagePath(p: Piece12): string {
+  const folder = p.color;
+  const suffix = p.color==="white"?"White":p.color==="grey"?"Gray":p.type==="super-knight"?"Black":"black";
+  const nm: Record<PieceType12,string> = {
+    "mystic-king":"Mystic King","super-queen":"Super Queen","dragon":"Dragon","gargoyle":"Gargoyle",
+    "wizard":"Wizard","sorceress":"Sorceress","super-knight":"Super Knight","assassin":"Assassin",
+    "executioner":"Executioner","cavalier":"Mystic King","mage":"Sorceress","elvin-archer":"Assassin","paladin":"Gargoyle",
   };
+  return `/pieces-12x12/${folder}/${nm[p.type]} ${suffix}.png`;
 }
 
-// ─── BOARD ACCESS ─────────────────────────────────────────────────────────────
-
-export function getPiece(board: TriBoard, sq: Square12): Piece12 | null {
-  if (sq.wing === "center") {
-    if (!inBoundsCenter(sq.row, sq.col)) return null;
-    return board.center[sq.row]?.[sq.col] ?? null;
-  }
-  if (!inBoundsWing(sq.row, sq.col)) return null;
-  return board[sq.wing][sq.row][sq.col];
+// ─── BOARD SETUP ─────────────────────────────────────────────────────────────
+function mkP(type: PieceType12, color: PlayerColor, id: string): Piece12 {
+  return { id, type, color, hasMoved:false, paladanSuperUsed:false, superKnightJumpsLeft:2,
+    sorceressSpellsLeft:3, sorceressDead:false, sleepRoundsLeft:0,
+    isEthereal:type==="wizard"||type==="sorceress", executionerAxeUsed:false,
+    superQueenDoubleJumpDone:false, mageSacrificed:false };
 }
 
-export function setPiece(board: TriBoard, sq: Square12, piece: Piece12 | null): void {
-  if (sq.wing === "center") {
-    if (inBoundsCenter(sq.row, sq.col)) {
-      board.center[sq.row][sq.col] = piece;
-    }
-  } else {
-    if (inBoundsWing(sq.row, sq.col)) {
-      board[sq.wing][sq.row][sq.col] = piece;
-    }
-  }
-}
+const BACK:  PieceType12[] = ["executioner","assassin","super-knight","gargoyle","mystic-king","super-queen","sorceress","wizard","dragon","super-knight","assassin","executioner"];
+const FRONT: PieceType12[] = ["paladin","paladin","cavalier","elvin-archer","mage","paladin","paladin","mage","elvin-archer","cavalier","paladin","paladin"];
 
-// ─── IMAGE PATH ───────────────────────────────────────────────────────────────
-
-export function pieceImagePath(piece: Piece12): string {
-  const folder = piece.color;
-  const suffix =
-    piece.color === "white" ? "White" :
-    piece.color === "grey" ? "Gray" :
-    piece.type === "super-knight" ? "Black" : "black";
-
-  const nameMap: Record<PieceType12, string> = {
-    "mystic-king": "Mystic King",
-    "super-queen": "Super Queen",
-    "dragon": "Dragon",
-    "gargoyle": "Gargoyle",
-    "wizard": "Wizard",
-    "sorceress": "Sorceress",
-    "super-knight": "Super Knight",
-    "assassin": "Assassin",
-    "executioner": "Executioner",
-    "cavalier": "Mystic King",
-    "mage": "Sorceress",
-    "elvin-archer": "Assassin",
-    "paladin": "Gargoyle",
-  };
-
-  return `/pieces-12x12/${folder}/${nameMap[piece.type]} ${suffix}.png`;
-}
-
-// ─── BOARD SETUP ──────────────────────────────────────────────────────────────
-
-function mkPiece(type: PieceType12, color: PlayerColor, id: string): Piece12 {
-  return {
-    id, type, color,
-    hasMoved: false,
-    paladanSuperUsed: false,
-    superKnightJumpsLeft: 2,
-    sorceressSpellsLeft: 3,
-    sorceressDead: false,
-    sleepRoundsLeft: 0,
-    isEthereal: type === "wizard" || type === "sorceress",
-    executionerAxeUsed: false,
-    superQueenDoubleJumpDone: false,
-    mageSacrificed: false,
-  };
-}
-
-const BACK_ROW: PieceType12[] = [
-  "executioner","assassin","super-knight","gargoyle",
-  "mystic-king","super-queen","sorceress","wizard",
-  "dragon","super-knight","assassin","executioner",
-];
-
-const FRONT_ROW: PieceType12[] = [
-  "paladin","paladin","cavalier","elvin-archer",
-  "mage","paladin","paladin","mage",
-  "elvin-archer","cavalier","paladin","paladin",
-];
-
-function createEmptyWing(): WingBoard {
-  return Array(12).fill(null).map(() => Array(12).fill(null));
-}
-
-function createEmptyCenter(): (Piece12 | null)[][] {
-  const center: (Piece12 | null)[][] = [];
-  for (let r = 0; r < 6; r++) {
-    center.push(Array(centerRowWidth(r)).fill(null));
-  }
-  return center;
-}
-
-function setupWing(wing: WingBoard, color: PlayerColor): void {
-  // Row 11 = back row (farthest from center), Row 10 = front row
-  BACK_ROW.forEach((type, col) => {
-    wing[11][col] = mkPiece(type, color, `${color[0]}-back-${col}`);
+export function createInitialBoard12(): Board12 {
+  const b: Board12 = Array(12).fill(null).map(()=>Array(12).fill(null));
+  BACK.forEach((t,c)=>{ b[11][c]=mkP(t,"white",`w-b${c}`); b[0][c]=mkP(t,"black",`k-b${c}`); });
+  FRONT.forEach((t,c)=>{ b[10][c]=mkP(t,"white",`w-f${c}`); b[1][c]=mkP(t,"black",`k-f${c}`); });
+  // Grey on right cols 10-11, rows 2-9
+  [2,3,4,5,6,7,8,9].forEach((row,i)=>{
+    if(i<BACK.length)  b[row][11]=mkP(BACK[i], "grey",`g-b${row}`);
+    if(i<FRONT.length&&!b[row][10]) b[row][10]=mkP(FRONT[i],"grey",`g-f${row}`);
   });
-  FRONT_ROW.forEach((type, col) => {
-    wing[10][col] = mkPiece(type, color, `${color[0]}-front-${col}`);
-  });
-}
-
-export function createInitialTriBoard(): TriBoard {
-  const board: TriBoard = {
-    white: createEmptyWing(),
-    black: createEmptyWing(),
-    grey: createEmptyWing(),
-    center: createEmptyCenter(),
-  };
-
-  setupWing(board.white, "white");
-  setupWing(board.black, "black");
-  setupWing(board.grey, "grey");
-
-  return board;
+  return b;
 }
 
 export function createInitialGameState12(): GameState12 {
   return {
-    board: createInitialTriBoard(),
-    currentTurn: "white",
-    turnOrder: ["white", "black", "grey"],
-    eliminatedPlayers: [],
-    capturedBy: { white: [], black: [], grey: [] },
-    selectedSquare: null,
-    validMoves: [],
-    status: "playing",
-    winner: null,
-    lastMove: null,
-    check: null,
-    specialMode: null,
-    specialData: null,
-    wishDiceResult: null,
-    turnMovesLeft: 1,
-    pendingAxeSquare: null,
-    spellMessage: null,
+    board:createInitialBoard12(), currentTurn:"white",
+    turnOrder:["white","black","grey"], eliminatedPlayers:[],
+    capturedBy:{white:[],black:[],grey:[]},
+    selectedSquare:null, validMoves:[], status:"playing", winner:null,
+    lastMove:null, check:null, specialMode:null, specialData:null,
+    wishDiceResult:null, turnMovesLeft:1, pendingAxeSquare:null, spellMessage:null,
+    lastMoveQuality:null, justEliminated:null,
   };
 }
 
-// ─── WING EDGE CONNECTIONS ────────────────────────────────────────────────────
-// When a piece moves off row 0 of a wing, it enters the center bridge.
-// Each wing's row 0 connects to specific center cells.
-// Wing row 0, cols 0-11 connect to center.
-// 
-// The center bridge is a triangular area where all 3 wings meet.
-// Wing row 0 is the edge closest to center.
-//
-// Mapping: Each wing's row 0 cols 3-8 (6 cells) connect to center row 5 (11 cells)
-// distributed evenly. Simpler approach: row 0 of each wing connects to center.
-
-interface BridgeConnection {
-  wing: Wing;
-  wingRow: number;
-  wingCol: number;
-  centerRow: number;
-  centerCol: number;
-}
-
-// Each wing's row 0 center columns (4,5,6,7) connect to center row 5
-// White connects to center row 5, cols 0-3
-// Black connects to center row 5, cols 4-7
-// Grey connects to center row 5, cols 8-10
-function getWingToCenterConnections(wing: PlayerColor): BridgeConnection[] {
-  const connections: BridgeConnection[] = [];
-  // Each wing's row 0, cols 4-7 connect to center
-  const offsets: Record<PlayerColor, number> = { white: 0, black: 4, grey: 7 };
-  const base = offsets[wing];
-  for (let i = 0; i < 4; i++) {
-    connections.push({
-      wing,
-      wingRow: 0,
-      wingCol: 4 + i,
-      centerRow: 5,
-      centerCol: Math.min(base + i, 10),
-    });
-  }
-  return connections;
-}
-
-// Get all squares adjacent to a given square (including cross-wing via center)
-function getAdjacentSquares(board: TriBoard, sq: Square12, dirs: [number, number][]): Square12[] {
-  const results: Square12[] = [];
-
-  if (sq.wing === "center") {
-    // Movement within center
-    for (const [dr, dc] of dirs) {
-      const nr = sq.row + dr;
-      const nc = sq.col + dc;
-      if (inBoundsCenter(nr, nc)) {
-        results.push({ row: nr, col: nc, wing: "center" });
-      }
-      // If moving out of center (row 5 edge) -> enter a wing's row 0
-      if (sq.row === 5 && dr === 1) {
-        // Determine which wing based on col position
-        if (nc >= 0 && nc < 4) {
-          results.push({ row: 0, col: 4 + (nc % 4), wing: "white" });
-        } else if (nc >= 4 && nc < 8) {
-          results.push({ row: 0, col: 4 + (nc - 4), wing: "black" });
-        } else if (nc >= 8 && nc < 11) {
-          results.push({ row: 0, col: 4 + (nc - 8), wing: "grey" });
-        }
-      }
-    }
-  } else {
-    // Movement within a wing
-    for (const [dr, dc] of dirs) {
-      const nr = sq.row + dr;
-      const nc = sq.col + dc;
-      if (inBoundsWing(nr, nc)) {
-        results.push({ row: nr, col: nc, wing: sq.wing });
-      }
-      // If moving past row 0 (toward center)
-      if (sq.row === 0 && dr === -1 && nc >= 4 && nc <= 7) {
-        const offsets: Record<string, number> = { white: 0, black: 4, grey: 7 };
-        const base = offsets[sq.wing as string] ?? 0;
-        const centerCol = base + (nc - 4);
-        if (inBoundsCenter(5, centerCol)) {
-          results.push({ row: 5, col: centerCol, wing: "center" });
-        }
-      }
-    }
-  }
-
-  return results;
-}
-
 // ─── MOVE GENERATION ─────────────────────────────────────────────────────────
-
 const ALL8: [number,number][] = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]];
-const STRAIGHT4: [number,number][] = [[-1,0],[1,0],[0,-1],[0,1]];
-const KNIGHT_JUMPS: [number,number][] = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+const ST4:  [number,number][] = [[-1,0],[1,0],[0,-1],[0,1]];
+const KJ:   [number,number][] = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
 
-function slidingTri(board: TriBoard, sq: Square12, dirs: [number,number][], color: PlayerColor): Square12[] {
-  const moves: Square12[] = [];
-  for (const [dr, dc] of dirs) {
-    let current = sq;
-    for (let step = 0; step < 12; step++) {
-      const nexts = getAdjacentSquares(board, current, [[dr, dc]]);
-      if (nexts.length === 0) break;
-      const next = nexts[0];
-      const target = getPiece(board, next);
-      if (!target) {
-        moves.push(next);
-        current = next;
-      } else {
-        if (target.color !== color) moves.push(next);
-        break;
-      }
-    }
-  }
-  return moves;
+function slide(b:Board12,r:number,c:number,dirs:[number,number][],color:PlayerColor):Square12[]{
+  const m:Square12[]=[];
+  for(const[dr,dc]of dirs){let rr=r+dr,cc=c+dc;while(inB(rr,cc)){const t=b[rr][cc];if(!t){m.push({row:rr,col:cc});}else{if(t.color!==color)m.push({row:rr,col:cc});break;}rr+=dr;cc+=dc;}}
+  return m;
 }
-
-function oneStepTri(board: TriBoard, sq: Square12, color: PlayerColor): Square12[] {
-  const all = getAdjacentSquares(board, sq, ALL8);
-  return all.filter(s => {
-    const p = getPiece(board, s);
-    return !p || p.color !== color;
-  });
+function lj(b:Board12,r:number,c:number,color:PlayerColor):Square12[]{
+  return KJ.map(([dr,dc])=>({row:r+dr,col:c+dc})).filter(s=>inB(s.row,s.col)&&b[s.row][s.col]?.color!==color);
 }
-
-function lJumpsTri(board: TriBoard, sq: Square12, color: PlayerColor): Square12[] {
-  const moves: Square12[] = [];
-  for (const [dr, dc] of KNIGHT_JUMPS) {
-    let target: Square12;
-    if (sq.wing === "center") {
-      const nr = sq.row + dr;
-      const nc = sq.col + dc;
-      if (inBoundsCenter(nr, nc)) {
-        target = { row: nr, col: nc, wing: "center" };
-      } else continue;
-    } else {
-      const nr = sq.row + dr;
-      const nc = sq.col + dc;
-      if (inBoundsWing(nr, nc)) {
-        target = { row: nr, col: nc, wing: sq.wing };
-      } else continue;
-    }
-    const p = getPiece(board, target);
-    if (!p || p.color !== color) {
-      moves.push(target);
-    }
-  }
-  return moves;
+function os(b:Board12,r:number,c:number,color:PlayerColor):Square12[]{
+  return ALL8.map(([dr,dc])=>({row:r+dr,col:c+dc})).filter(s=>inB(s.row,s.col)&&b[s.row][s.col]?.color!==color);
 }
+function dd(m:Square12[]):Square12[]{const s=new Set<string>();return m.filter(q=>{const k=`${q.row},${q.col}`;if(s.has(k))return false;s.add(k);return true;});}
 
-function dedup(moves: Square12[]): Square12[] {
-  const seen = new Set<string>();
-  return moves.filter(sq => {
-    const k = `${sq.wing}-${sq.row}-${sq.col}`;
-    if (seen.has(k)) return false;
-    seen.add(k); return true;
-  });
-}
-
-export function getRawMoves12(board: TriBoard, sq: Square12): Square12[] {
-  const piece = getPiece(board, sq);
-  if (!piece) return [];
-  if (piece.sleepRoundsLeft > 0) return [];
-  const { type, color } = piece;
-  let moves: Square12[] = [];
-
-  switch (type) {
-    case "mystic-king":
-      moves.push(...lJumpsTri(board, sq, color));
-      moves.push(...oneStepTri(board, sq, color));
+export function getRawMoves12(b:Board12,r:number,c:number):Square12[]{
+  const p=b[r][c]; if(!p||p.sleepRoundsLeft>0) return [];
+  const {type,color}=p; let m:Square12[]=[];
+  switch(type){
+    case"mystic-king":  m=[...lj(b,r,c,color),...os(b,r,c,color)]; break;
+    case"super-queen":  m=slide(b,r,c,ALL8,color); break;
+    case"dragon":
+    case"gargoyle":     m=[...slide(b,r,c,ALL8,color),...lj(b,r,c,color).filter(s=>b[s.row][s.col]&&b[s.row][s.col]!.color!==color)]; break;
+    case"wizard":
+      for(const[dr,dc]of ALL8){let rr=r+dr,cc=c+dc;while(inB(rr,cc)){const t=b[rr][cc];if(!t){m.push({row:rr,col:cc});}else{if(t.color!==color&&(t.type==="wizard"||t.type==="sorceress"))m.push({row:rr,col:cc});break;}rr+=dr;cc+=dc;}}
       break;
-    case "super-queen":
-      moves.push(...slidingTri(board, sq, ALL8, color));
-      break;
-    case "dragon":
-    case "gargoyle":
-      moves.push(...slidingTri(board, sq, ALL8, color));
-      lJumpsTri(board, sq, color)
-        .filter(s => { const p = getPiece(board, s); return p !== null && p.color !== color; })
-        .forEach(s => moves.push(s));
-      break;
-    case "wizard":
-      for (const [dr, dc] of ALL8) {
-        let current = sq;
-        for (let step = 0; step < 12; step++) {
-          const nexts = getAdjacentSquares(board, current, [[dr, dc]]);
-          if (nexts.length === 0) break;
-          const next = nexts[0];
-          const t = getPiece(board, next);
-          if (!t) {
-            moves.push(next);
-            current = next;
-          } else {
-            if (t.color !== color && (t.type === "wizard" || t.type === "sorceress"))
-              moves.push(next);
-            break;
-          }
-        }
-      }
-      break;
-    case "sorceress":
-      moves.push(...slidingTri(board, sq, ALL8, color));
-      break;
-    case "super-knight":
-      moves.push(...lJumpsTri(board, sq, color));
-      break;
-    case "assassin":
-      moves.push(...slidingTri(board, sq, ALL8, color));
-      moves.push(...lJumpsTri(board, sq, color));
-      moves.push(...oneStepTri(board, sq, color));
-      break;
-    case "executioner":
-      moves.push(...slidingTri(board, sq, STRAIGHT4, color));
-      break;
-    case "cavalier":
-      moves.push(...lJumpsTri(board, sq, color));
-      moves.push(...oneStepTri(board, sq, color));
-      break;
-    case "mage":
-      moves.push(...slidingTri(board, sq, ALL8, color));
-      break;
-    case "elvin-archer":
-      moves.push(...slidingTri(board, sq, ALL8, color));
-      moves.push(...lJumpsTri(board, sq, color));
-      moves.push(...oneStepTri(board, sq, color));
-      break;
-    case "paladin":
-      moves.push(...oneStepTri(board, sq, color));
-      if (!piece.paladanSuperUsed) {
-        for (const [dr, dc] of ALL8) {
-          for (const dist of [2, 3]) {
-            let target: Square12 | null = null;
-            if (sq.wing !== "center") {
-              const r = sq.row + dr * dist;
-              const c = sq.col + dc * dist;
-              if (inBoundsWing(r, c)) {
-                target = { row: r, col: c, wing: sq.wing };
-              }
-            } else {
-              const r = sq.row + dr * dist;
-              const c = sq.col + dc * dist;
-              if (inBoundsCenter(r, c)) {
-                target = { row: r, col: c, wing: "center" };
-              }
-            }
-            if (target) {
-              const p = getPiece(board, target);
-              if (!p || p.color !== color) moves.push(target);
-            }
-          }
-        }
-      }
+    case"sorceress":    m=slide(b,r,c,ALL8,color); break;
+    case"super-knight": m=lj(b,r,c,color); break;
+    case"assassin":     m=[...slide(b,r,c,ALL8,color),...lj(b,r,c,color),...os(b,r,c,color)]; break;
+    case"executioner":  m=slide(b,r,c,ST4,color); break;
+    case"cavalier":     m=[...lj(b,r,c,color),...os(b,r,c,color)]; break;
+    case"mage":         m=slide(b,r,c,ALL8,color); break;
+    case"elvin-archer": m=[...slide(b,r,c,ALL8,color),...lj(b,r,c,color),...os(b,r,c,color)]; break;
+    case"paladin":
+      m=[...os(b,r,c,color)];
+      if(!p.paladanSuperUsed) for(const[dr,dc]of ALL8) for(const d of[2,3]){const rr=r+dr*d,cc=c+dc*d;if(inB(rr,cc)&&b[rr][cc]?.color!==color)m.push({row:rr,col:cc});}
       break;
   }
-
-  return dedup(moves);
+  return dd(m);
 }
 
-// ─── CHECK DETECTION ─────────────────────────────────────────────────────────
-
-export function findKing12(board: TriBoard, color: PlayerColor): Square12 | null {
-  // Search all wings and center
-  const wings: Wing[] = ["white", "black", "grey"];
-  for (const w of wings) {
-    for (let r = 0; r < 12; r++)
-      for (let c = 0; c < 12; c++)
-        if (board[w][r][c]?.type === "mystic-king" && board[w][r][c]?.color === color)
-          return { row: r, col: c, wing: w };
-  }
-  // Check center
-  for (let r = 0; r < 6; r++)
-    for (let c = 0; c < centerRowWidth(r); c++)
-      if (board.center[r]?.[c]?.type === "mystic-king" && board.center[r][c]?.color === color)
-        return { row: r, col: c, wing: "center" };
+export function findKing12(b:Board12,color:PlayerColor):Square12|null{
+  for(let r=0;r<12;r++)for(let c=0;c<12;c++)if(b[r][c]?.type==="mystic-king"&&b[r][c]?.color===color)return{row:r,col:c};
   return null;
 }
 
-function allSquares(): Square12[] {
-  const result: Square12[] = [];
-  const wings: Wing[] = ["white", "black", "grey"];
-  for (const w of wings) {
-    for (let r = 0; r < 12; r++)
-      for (let c = 0; c < 12; c++)
-        result.push({ row: r, col: c, wing: w });
-  }
-  for (let r = 0; r < 6; r++)
-    for (let c = 0; c < centerRowWidth(r); c++)
-      result.push({ row: r, col: c, wing: "center" });
-  return result;
-}
-
-export function isKingInCheck12(board: TriBoard, color: PlayerColor, activePlayers: PlayerColor[]): boolean {
-  const king = findKing12(board, color);
-  if (!king) return false;
-  for (const sq of allSquares()) {
-    const p = getPiece(board, sq);
-    if (p && p.color !== color && activePlayers.includes(p.color)) {
-      const moves = getRawMoves12(board, sq);
-      if (moves.some(m => sq12Eq(m, king))) return true;
-    }
-  }
+export function isKingInCheck12(b:Board12,color:PlayerColor,active:PlayerColor[]):boolean{
+  const k=findKing12(b,color); if(!k) return false;
+  for(let r=0;r<12;r++)for(let c=0;c<12;c++){const p=b[r][c];if(p&&p.color!==color&&active.includes(p.color))if(getRawMoves12(b,r,c).some(m=>sq12Eq(m,k)))return true;}
   return false;
 }
 
-export function getLegalMoves12(board: TriBoard, sq: Square12, activePlayers: PlayerColor[]): Square12[] {
-  const piece = getPiece(board, sq);
-  if (!piece) return [];
-  const raw = getRawMoves12(board, sq);
-  return raw.filter(to => {
-    const test = cloneTriBoard(board);
-    const p = getPiece(test, sq);
-    setPiece(test, to, p);
-    setPiece(test, sq, null);
-    return !isKingInCheck12(test, piece.color, activePlayers);
-  });
+export function getLegalMoves12(b:Board12,row:number,col:number,active:PlayerColor[]):Square12[]{
+  const p=b[row][col]; if(!p) return [];
+  return getRawMoves12(b,row,col).filter(to=>{const t=cloneBoard12(b);t[to.row][to.col]=t[row][col];t[row][col]=null;return!isKingInCheck12(t,p.color,active);});
 }
 
-// ─── SLEEP TICK ───────────────────────────────────────────────────────────────
+// ─── MOVE QUALITY EVALUATOR ──────────────────────────────────────────────────
+function evaluateMoveQuality(
+  board: Board12, from: Square12, to: Square12,
+  piece: Piece12, captured: Piece12 | null, newBoard: Board12,
+  active: PlayerColor[]
+): "great" | "risky" | "normal" {
+  let score = 0;
+  const pieceValues: Record<PieceType12, number> = {
+    "mystic-king":10,"super-queen":9,"dragon":8,"gargoyle":7,"sorceress":7,
+    "wizard":6,"assassin":6,"elvin-archer":5,"super-knight":5,"executioner":5,
+    "cavalier":4,"mage":4,"paladin":2,
+  };
 
-export function tickSleep(board: TriBoard, color: PlayerColor): TriBoard {
-  const b = cloneTriBoard(board);
-  for (const sq of allSquares()) {
-    const p = getPiece(b, sq);
-    if (p && p.color === color && p.sleepRoundsLeft > 0) {
-      setPiece(b, sq, { ...p, sleepRoundsLeft: p.sleepRoundsLeft - 1 });
+  // Captured a high-value piece = great
+  if (captured) score += pieceValues[captured.type] * 2;
+
+  // Moved to check enemy king = great
+  for (const enemy of active) {
+    if (enemy !== piece.color && isKingInCheck12(newBoard, enemy, active)) score += 5;
+  }
+
+  // Own king now in check = risky
+  if (isKingInCheck12(newBoard, piece.color, active)) score -= 8;
+
+  // Moving king into danger = risky
+  if (piece.type === "mystic-king") {
+    const enemies = active.filter(c => c !== piece.color);
+    let threatened = 0;
+    for (let r = 0; r < 12; r++) for (let c = 0; c < 12; c++) {
+      const ep = newBoard[r][c];
+      if (ep && enemies.includes(ep.color)) {
+        if (getRawMoves12(newBoard, r, c).some(m => sq12Eq(m, to))) threatened++;
+      }
+    }
+    if (threatened > 1) score -= 6;
+  }
+
+  // Moving valuable piece to threatened square = risky
+  if (pieceValues[piece.type] >= 6) {
+    const enemies = active.filter(c => c !== piece.color);
+    for (let r = 0; r < 12; r++) for (let c = 0; c < 12; c++) {
+      const ep = newBoard[r][c];
+      if (ep && enemies.includes(ep.color)) {
+        if (getRawMoves12(newBoard, r, c).some(m => sq12Eq(m, to))) { score -= 3; break; }
+      }
     }
   }
-  return b;
+
+  if (score >= 4) return "great";
+  if (score <= -4) return "risky";
+  return "normal";
 }
 
 // ─── FIND PIECES ─────────────────────────────────────────────────────────────
+export function findSorceress(b:Board12,c:PlayerColor):Square12|null{for(let r=0;r<12;r++)for(let cc=0;cc<12;cc++)if(b[r][cc]?.type==="sorceress"&&b[r][cc]?.color===c)return{row:r,col:cc};return null;}
+export function findWizard(b:Board12,c:PlayerColor):Square12|null{for(let r=0;r<12;r++)for(let cc=0;cc<12;cc++)if(b[r][cc]?.type==="wizard"&&b[r][cc]?.color===c)return{row:r,col:cc};return null;}
 
-export function findSorceress(board: TriBoard, color: PlayerColor): Square12 | null {
-  for (const sq of allSquares()) {
-    const p = getPiece(board, sq);
-    if (p?.type === "sorceress" && p.color === color) return sq;
-  }
+// ─── SPELLS ──────────────────────────────────────────────────────────────────
+export function applySleepSpell(b:Board12,tSq:Square12,sSq:Square12):Board12{
+  const nb=cloneBoard12(b);const t=nb[tSq.row][tSq.col],s=nb[sSq.row][sSq.col];if(!t||!s)return nb;
+  nb[tSq.row][tSq.col]={...t,sleepRoundsLeft:3};
+  const ns=s.sorceressSpellsLeft-1;if(ns<=0)nb[sSq.row][sSq.col]=null;else nb[sSq.row][sSq.col]={...s,sorceressSpellsLeft:ns};return nb;
+}
+export function applyTeleportSpell(b:Board12,pSq:Square12,dSq:Square12,sSq:Square12):Board12{
+  const nb=cloneBoard12(b);const p=nb[pSq.row][pSq.col],s=nb[sSq.row][sSq.col];if(!p||!s)return nb;
+  nb[dSq.row][dSq.col]=p;nb[pSq.row][pSq.col]=null;
+  const ns=s.sorceressSpellsLeft-1;if(ns<=0)nb[sSq.row][sSq.col]=null;else nb[sSq.row][sSq.col]={...s,sorceressSpellsLeft:ns};return nb;
+}
+export function rollWishDice():number{return Math.floor(Math.random()*10)+1;}
+export function applyWizardTeleport(b:Board12,pSq:Square12,dSq:Square12):Board12{
+  const nb=cloneBoard12(b);const p=nb[pSq.row][pSq.col];if(!p)return nb;nb[dSq.row][dSq.col]=p;nb[pSq.row][pSq.col]=null;return nb;
+}
+export function getAxeSwingSquares(b:Board12,r:number,c:number,color:PlayerColor):Square12[]{
+  return [{row:r,col:c-1},{row:r,col:c+1},{row:r-1,col:c},{row:r+1,col:c}].filter(s=>inB(s.row,s.col)&&b[s.row][s.col]!==null&&b[s.row][s.col]!.color!==color);
+}
+export function applyMageSacrifice(b:Board12,mSq:Square12,qSq:Square12):Board12{
+  const nb=cloneBoard12(b);const q=nb[qSq.row][qSq.col];if(!q||q.type!=="super-queen")return nb;
+  nb[mSq.row][mSq.col]=null;nb[qSq.row][qSq.col]={...q,superQueenDoubleJumpDone:false};return nb;
+}
+
+export function tickSleep(b:Board12,color:PlayerColor):Board12{
+  const nb=cloneBoard12(b);
+  for(let r=0;r<12;r++)for(let c=0;c<12;c++){const p=nb[r][c];if(p&&p.color===color&&p.sleepRoundsLeft>0)nb[r][c]={...p,sleepRoundsLeft:p.sleepRoundsLeft-1};}
+  return nb;
+}
+
+// ─── WIN CHECK — THE CRITICAL FUNCTION ───────────────────────────────────────
+// A player is eliminated when their Mystic King is captured.
+// Winner = last player remaining in turnOrder.
+function checkWinner(turnOrder: PlayerColor[]): PlayerColor | null {
+  if (turnOrder.length === 1) return turnOrder[0];
+  if (turnOrder.length === 0) return null; // draw / error
   return null;
-}
-
-export function findWizard(board: TriBoard, color: PlayerColor): Square12 | null {
-  for (const sq of allSquares()) {
-    const p = getPiece(board, sq);
-    if (p?.type === "wizard" && p.color === color) return sq;
-  }
-  return null;
-}
-
-// ─── SPELL FUNCTIONS ─────────────────────────────────────────────────────────
-
-export function applySleepSpell(board: TriBoard, targetSq: Square12, sorcSq: Square12): TriBoard {
-  const b = cloneTriBoard(board);
-  const target = getPiece(b, targetSq);
-  const sorc = getPiece(b, sorcSq);
-  if (!target || !sorc) return b;
-  setPiece(b, targetSq, { ...target, sleepRoundsLeft: 3 });
-  const newSpells = sorc.sorceressSpellsLeft - 1;
-  if (newSpells <= 0) setPiece(b, sorcSq, null);
-  else setPiece(b, sorcSq, { ...sorc, sorceressSpellsLeft: newSpells });
-  return b;
-}
-
-export function applyTeleportSpell(board: TriBoard, pieceSq: Square12, destSq: Square12, sorcSq: Square12): TriBoard {
-  const b = cloneTriBoard(board);
-  const piece = getPiece(b, pieceSq);
-  const sorc = getPiece(b, sorcSq);
-  if (!piece || !sorc) return b;
-  setPiece(b, destSq, piece);
-  setPiece(b, pieceSq, null);
-  const newSpells = sorc.sorceressSpellsLeft - 1;
-  if (newSpells <= 0) setPiece(b, sorcSq, null);
-  else setPiece(b, sorcSq, { ...sorc, sorceressSpellsLeft: newSpells });
-  return b;
-}
-
-export function rollWishDice(): number {
-  return Math.floor(Math.random() * 10) + 1;
-}
-
-export function applyWizardTeleport(board: TriBoard, pieceSq: Square12, destSq: Square12): TriBoard {
-  const b = cloneTriBoard(board);
-  const piece = getPiece(b, pieceSq);
-  if (!piece) return b;
-  setPiece(b, destSq, piece);
-  setPiece(b, pieceSq, null);
-  return b;
-}
-
-export function getAxeSwingSquares(board: TriBoard, sq: Square12, color: PlayerColor): Square12[] {
-  const adjacent = getAdjacentSquares(board, sq, STRAIGHT4);
-  return adjacent.filter(s => {
-    const p = getPiece(board, s);
-    return p !== null && p.color !== color;
-  });
-}
-
-export function applyMageSacrifice(board: TriBoard, mageSq: Square12, queenSq: Square12): TriBoard {
-  const b = cloneTriBoard(board);
-  const queen = getPiece(b, queenSq);
-  if (!queen || queen.type !== "super-queen") return b;
-  setPiece(b, mageSq, null);
-  setPiece(b, queenSq, { ...queen, superQueenDoubleJumpDone: false });
-  return b;
 }
 
 // ─── ADVANCE TURN ────────────────────────────────────────────────────────────
-
 export function advanceTurn(state: GameState12): GameState12 {
   const ns = cloneState12(state);
-  ns.specialMode = null;
-  ns.specialData = null;
-  ns.spellMessage = null;
-  ns.pendingAxeSquare = null;
-  ns.turnMovesLeft = 1;
-  ns.selectedSquare = null;
-  ns.validMoves = [];
+  ns.specialMode=null; ns.specialData=null; ns.spellMessage=null;
+  ns.pendingAxeSquare=null; ns.selectedSquare=null; ns.validMoves=[];
+  ns.justEliminated=null; // clear elimination popup after processing
 
-  if (ns.turnOrder.length === 1) {
-    ns.status = "finished";
-    ns.winner = ns.turnOrder[0];
-    return ns;
-  }
+  // Check winner
+  const w = checkWinner(ns.turnOrder);
+  if (w) { ns.status="finished"; ns.winner=w; ns.currentTurn=w; return ns; }
 
+  // Advance to next living player
   const idx = ns.turnOrder.indexOf(ns.currentTurn);
-  ns.currentTurn = ns.turnOrder[(idx + 1) % ns.turnOrder.length];
+  const nextIdx = (idx + 1) % ns.turnOrder.length;
+  ns.currentTurn = ns.turnOrder[nextIdx];
+  ns.turnMovesLeft = 1;
+
+  // Tick sleep for next player
   ns.board = tickSleep(ns.board, ns.currentTurn);
 
-  const hasSorceress = findSorceress(ns.board, ns.currentTurn) !== null;
-  ns.turnMovesLeft = hasSorceress ? 2 : 1;
+  // Super queen double move if sorceress alive
+  const hasSorc = findSorceress(ns.board, ns.currentTurn) !== null;
+  if (hasSorc) ns.turnMovesLeft = 2;
 
+  // Check detection — check all living players
   ns.check = null;
   for (const player of ns.turnOrder) {
     if (isKingInCheck12(ns.board, player, ns.turnOrder)) {
-      ns.check = player;
-      break;
+      ns.check = player; break;
     }
   }
 
@@ -701,61 +293,75 @@ export function advanceTurn(state: GameState12): GameState12 {
 }
 
 // ─── EXECUTE MOVE ────────────────────────────────────────────────────────────
-
 export function executeMove12(state: GameState12, from: Square12, to: Square12): GameState12 {
   const ns = cloneState12(state);
   const board = ns.board;
-  const piece = getPiece(board, from)!;
-  const target = getPiece(board, to);
+  const piece = board[from.row][from.col]!;
+  const target = board[to.row][to.col];
+  ns.justEliminated = null;
 
+  // Capture logic
   if (target) {
     ns.capturedBy[piece.color].push(target);
+
+    // ── MYSTIC KING CAPTURED = ELIMINATION ──
     if (target.type === "mystic-king") {
       ns.eliminatedPlayers.push(target.color);
+      ns.justEliminated = target.color; // trigger elimination popup
+
+      // Remove eliminated player from turn order
       ns.turnOrder = ns.turnOrder.filter(p => p !== target.color);
-      // Remove all pieces of eliminated player
-      for (const sq of allSquares()) {
-        const p = getPiece(board, sq);
-        if (p?.color === target.color) setPiece(board, sq, null);
-      }
+
+      // Remove ALL pieces of eliminated player from board
+      for (let r = 0; r < 12; r++)
+        for (let c = 0; c < 12; c++)
+          if (board[r][c]?.color === target.color) board[r][c] = null;
     }
+
+    // Sorceress killed = super queen loses double jump
     if (target.type === "sorceress") {
-      for (const sq of allSquares()) {
-        const p = getPiece(board, sq);
-        if (p && p.type === "super-queen" && p.color === target.color) {
-          setPiece(board, sq, { ...p, sorceressDead: true });
+      for (let r = 0; r < 12; r++)
+        for (let c = 0; c < 12; c++) {
+          const p = board[r][c];
+          if (p && p.type === "super-queen" && p.color === target.color)
+            board[r][c] = { ...p, sorceressDead: true };
         }
-      }
     }
   }
 
-  const isPaladanSuper =
-    piece.type === "paladin" && !piece.paladanSuperUsed &&
-    (Math.abs(to.row - from.row) > 1 || Math.abs(to.col - from.col) > 1);
+  // Evaluate move quality BEFORE moving
+  const newBoardPreview = cloneBoard12(board);
+  newBoardPreview[to.row][to.col] = piece;
+  newBoardPreview[from.row][from.col] = null;
+  const quality = evaluateMoveQuality(board, from, to, piece, target, newBoardPreview, ns.turnOrder);
+  ns.lastMoveQuality = quality;
 
-  setPiece(board, to, {
-    ...piece,
-    hasMoved: true,
-    paladanSuperUsed: isPaladanSuper ? true : piece.paladanSuperUsed,
-    executionerAxeUsed: false,
-  });
-  setPiece(board, from, null);
+  // Paladin super used check
+  const isPS = piece.type==="paladin" && !piece.paladanSuperUsed && (Math.abs(to.row-from.row)>1||Math.abs(to.col-from.col)>1);
 
+  // Move piece
+  board[to.row][to.col] = { ...piece, hasMoved:true, paladanSuperUsed:isPS?true:piece.paladanSuperUsed, executionerAxeUsed:false };
+  board[from.row][from.col] = null;
   ns.lastMove = { from, to };
-  ns.selectedSquare = null;
-  ns.validMoves = [];
-  ns.specialMode = null;
-  ns.specialData = null;
-  ns.spellMessage = null;
-  ns.wishDiceResult = null;
+  ns.selectedSquare=null; ns.validMoves=[];
+  ns.specialMode=null; ns.specialData=null; ns.spellMessage=null; ns.wishDiceResult=null;
+
+  // ── CHECK WINNER RIGHT AFTER ELIMINATION ──
+  const w = checkWinner(ns.turnOrder);
+  if (w) {
+    ns.status = "finished";
+    ns.winner = w;
+    ns.currentTurn = w;
+    return ns;
+  }
 
   // Executioner axe swing
   if (piece.type === "executioner") {
-    const axeSquares = getAxeSwingSquares(board, to, piece.color);
-    if (axeSquares.length > 0) {
+    const ax = getAxeSwingSquares(board, to.row, to.col, piece.color);
+    if (ax.length > 0) {
       ns.pendingAxeSquare = to;
       ns.specialMode = "executioner-axe-swing";
-      ns.spellMessage = "Executioner can swing axe! Click adjacent enemy or click elsewhere to skip.";
+      ns.spellMessage = "Executioner: Click adjacent enemy to swing axe, or elsewhere to skip.";
       return ns;
     }
   }
@@ -766,30 +372,30 @@ export function executeMove12(state: GameState12, from: Square12, to: Square12):
     ns.specialMode = "super-queen-second-move";
     ns.spellMessage = "Super Queen can move again!";
     ns.selectedSquare = to;
-    ns.validMoves = getLegalMoves12(board, to, ns.turnOrder);
+    ns.validMoves = getLegalMoves12(board, to.row, to.col, ns.turnOrder);
     return ns;
   }
 
   return advanceTurn(ns);
 }
 
-// ─── APPLY AXE SWING ─────────────────────────────────────────────────────────
-
-export function applyAxeSwing(state: GameState12, targetSq: Square12): GameState12 {
+export function applyAxeSwing(state: GameState12, tSq: Square12): GameState12 {
   const ns = cloneState12(state);
   const board = ns.board;
-  const target = getPiece(board, targetSq);
-  if (!target) return advanceTurn(ns);
-  ns.capturedBy[ns.currentTurn].push(target);
-  if (target.type === "mystic-king") {
-    ns.eliminatedPlayers.push(target.color);
-    ns.turnOrder = ns.turnOrder.filter(p => p !== target.color);
-    for (const sq of allSquares()) {
-      const p = getPiece(board, sq);
-      if (p?.color === target.color) setPiece(board, sq, null);
-    }
+  const t = board[tSq.row][tSq.col];
+  if (!t) return advanceTurn(ns);
+  ns.capturedBy[ns.currentTurn].push(t);
+  if (t.type === "mystic-king") {
+    ns.eliminatedPlayers.push(t.color);
+    ns.justEliminated = t.color;
+    ns.turnOrder = ns.turnOrder.filter(p => p !== t.color);
+    for (let r = 0; r < 12; r++)
+      for (let c = 0; c < 12; c++)
+        if (board[r][c]?.color === t.color) board[r][c] = null;
+    const w = checkWinner(ns.turnOrder);
+    if (w) { ns.status="finished"; ns.winner=w; ns.currentTurn=w; return ns; }
   } else {
-    setPiece(board, targetSq, null);
+    board[tSq.row][tSq.col] = null;
   }
   return advanceTurn(ns);
 }

@@ -159,28 +159,40 @@ export function Navigation() {
       </div>
 
       {/* ── MOBILE DROPDOWN MENU ── */}
-      <div
-        className={cn(
-          "lg:hidden absolute top-full left-0 right-0 overflow-hidden transition-all duration-400 ease-in-out",
-          isMobileMenuOpen ? "max-h-[600px] opacity-100" : "max-h-0 opacity-0"
-        )}
-        style={{
-          background: "rgba(5, 5, 8, 0.98)",
-          borderBottom: "1px solid rgba(201, 168, 76, 0.1)",
-          backdropFilter: "blur(20px)",
-        }}
-      >
-        <div className="px-6 py-8 space-y-2">
-          {allLinks.map((link, i) => (
-            <NavLink
-              key={link.href}
-              href={link.href}
-              label={link.label}
-              onClick={() => setIsMobileMenuOpen(false)}
-            />
-          ))}
-        </div>
-      </div>
+   <div
+  className={cn(
+    "lg:hidden absolute top-full left-0 right-0 overflow-hidden transition-all duration-400 ease-in-out",
+    isMobileMenuOpen ? "max-h-[600px] opacity-100" : "max-h-0 opacity-0"
+  )}
+  style={{
+    background: "rgba(5, 5, 8, 0.55)",
+    borderBottom: "1px solid rgba(201, 168, 76, 0.15)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)"
+  }}
+>
+  {/* 🎥 Background Video */}
+  <video
+    autoPlay
+    loop
+    muted
+    playsInline
+    className="absolute top-0 right-0 w-[140%] h-full object-cover object-left z-0"
+>
+    <source src="https://www.pexels.com/download/video/7670836/" type="video/mp4" />
+  </video>
+
+  <div className="px-6 py-6 flex flex-col gap-4">
+    {allLinks.map((link) => (
+      <NavLink
+        key={link.href}
+        href={link.href}
+        label={link.label}
+        onClick={() => setIsMobileMenuOpen(false)}
+      />
+    ))}
+  </div>
+</div>
     </nav>
   )
 }

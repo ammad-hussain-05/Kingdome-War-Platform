@@ -118,11 +118,11 @@ socketRef.current = socket;
           width: "100vw",
           height: "100vh",
           objectFit: "cover",
-          zIndex: -1,
+          zIndex:2,
           pointerEvents: "none",
         }}
-      >
-        <source src="https://www.pexels.com/download/video/12783148/" type="video/mp4" />
+      >ttps://www.pexels.com/download/video/33717640/
+        <source src="https://www.pexels.com/download/video/25792126/" type="video/mp4" />
       </video>
 
       {/* ✅ Dark overlay — fixed, poore page pe */}
@@ -139,14 +139,10 @@ socketRef.current = socket;
       <div className="relative min-h-screen overflow-hidden">
 
         {/* Orbs */}
-        <div className="absolute inset-0 pointer-events-none" style={{ transform:`translate(${px*.4}px,${py*.4}px)`, transition:"transform .15s ease-out", zIndex: 1 }}>
-          <FloatingOrb style={{ width:500,height:500,top:"-10%",left:"10%",background:"radial-gradient(circle,rgba(180,90,10,.3),transparent 70%)",animationDelay:"0s" }} />
-          <FloatingOrb style={{ width:350,height:350,top:"30%",right:"-5%",background:"radial-gradient(circle,rgba(120,60,5,.2),transparent 70%)",animationDelay:"-3s" }} />
-          <FloatingOrb style={{ width:280,height:280,bottom:"10%",left:"20%",background:"radial-gradient(circle,rgba(212,168,67,.1),transparent 70%)",animationDelay:"-5s" }} />
-        </div>
+      
 
         {/* 3D Floor */}
-        <div className="absolute inset-0 pointer-events-none" style={{ perspective:"1200px",perspectiveOrigin:"50% 40%", zIndex: 1 }}>
+        {/* <div className="absolute inset-0 pointer-events-none" style={{ perspective:"1200px",perspectiveOrigin:"50% 40%", zIndex: 1 }}>
           <div style={{
             position:"absolute",bottom:0,left:"-20%",right:"-20%",height:"50%",
             transform:`rotateX(70deg) translateY(${py*.5}px)`,
@@ -156,7 +152,7 @@ socketRef.current = socket;
             transition:"transform .2s ease-out",
             maskImage:"linear-gradient(to top,black,transparent)",
           }} />
-        </div>
+        </div> */}
 
         {/* Content */}
         <div className="relative" style={{ padding:"140px clamp(16px,4vw,32px) 100px", zIndex: 2 }}>
@@ -219,7 +215,7 @@ socketRef.current = socket;
                 <button
                   className="lobby-btn"
                   onClick={() => setShowJoin(true)}
-                  style={{ background:"rgba(107,159,212,0.2)",color:"#90c4f0",border:"1px solid rgba(107,159,212,0.4)", fontWeight:800 }}
+                  style={{ background:"rgba(255, 255, 255, 0.2)",color:"#d4a843",border:"1px solid rgba(255, 255, 255, 0.2)", fontWeight:800 }}
                 >
                   Join Room
                 </button>
@@ -257,7 +253,7 @@ socketRef.current = socket;
                 <p style={{ fontSize:22,fontFamily:"Georgia,serif",color:"rgba(232,201,106,.9)",fontWeight:800,margin:"0 0 8px" }}>No Battles Yet</p>
                 <p style={{ fontSize:14,color:"rgba(212,168,67,.6)",margin:"0 0 24px", fontWeight:600 }}>Be the first to raise your banner</p>
                 <div style={{ display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap" }}>
-                  <button className="lobby-btn" onClick={()=>setShowJoin(true)} style={{ background:"rgba(107,159,212,0.2)",color:"#90c4f0",border:"1px solid rgba(107,159,212,0.4)", fontWeight:800 }}>
+                  <button className="lobby-btn" onClick={()=>setShowJoin(true)} style={{ background:"rgba(255, 255, 255, 0.2)",color:"#fff",border:"1px solid rgba(255, 255, 255, 0.2)", fontWeight:800 }}>
                     Join Room
                   </button>
                   <button className="lobby-btn" onClick={()=>setShowCreate(true)} style={{ background:"linear-gradient(135deg,#d4a843,#b8862e)",color:"#1a0d00", fontWeight:800 }}>

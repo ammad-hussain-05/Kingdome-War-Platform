@@ -23,7 +23,7 @@ export default function KingdomComePage() {
       <GameCanvas />
       <OrderSection />
       <FanClubSection />
-      <Footer />
+  
     </main>
   )
 }

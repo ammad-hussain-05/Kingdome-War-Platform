@@ -175,7 +175,7 @@ export default function GamePage() {
           objectFit: "cover", zIndex: 2, pointerEvents: "none",
         }}
       >
-        <source src="https://www.pexels.com/download/video/12783148/" type="video/mp4" />
+        <source src="https://www.pexels.com/download/video/25792126/" type="video/mp4" />
       </video>
 
       {/* ✅ Dark overlay (UNTOUCHED) */}
@@ -226,17 +226,17 @@ export default function GamePage() {
               Select Your Board
             </h1>
 
-            <p style={{ fontSize: 14, color: "rgba(220,180,100,.75)", fontWeight: 600, marginBottom: 6 }}>
-              Room ID:{" "}
+            <p style={{ fontSize: 18, color: "rgba(220,180,100,.75)", fontWeight: 600, marginBottom: 6 }}>
+              Room ID :{" "}
               <span style={{ color: "#e8c96a", fontFamily: "monospace", fontWeight: 800, letterSpacing: "0.1em" }}>
                 {roomId}
               </span>
             </p>
 
             {roomMode && (
-              <p style={{ fontSize: 13, color: "rgba(255,255,255,.55)", fontWeight: 600 }}>
-                This room supports:{" "}
-                <span style={{ color: "#d4a843", fontWeight: 800 }}>{roomMode} mode only</span>
+              <p style={{ fontSize: 15, color: "rgba(255,255,255,.55)", fontWeight: 600 }}>
+                This room supports :{" "}
+                <span style={{ color: "#d4a843",fontSize: 18, fontWeight: 800 }}>{roomMode}  mode only</span>
               </p>
             )}
           </div>
@@ -271,20 +271,50 @@ export default function GamePage() {
                   onMouseEnter={() => isAllowed && setHoveredId(mode.id)}
                   onMouseLeave={() => setHoveredId(null)}
                   style={{
-                    background: isAllowed
-                      ? "rgba(15, 10, 2, 0.45)" // Glass transparent background
-                      : "rgba(5,3,1,0.25)", // Even more transparent for locked
-                    border: `1px solid ${isAllowed
-                      ? isHovered ? mode.accent + "80" : mode.accent + "40"
-                      : "rgba(255,255,255,0.08)"}`,
-                    opacity: isAllowed ? 1 : 0.38,
-                    cursor: isAllowed ? "pointer" : "not-allowed",
-                    boxShadow: isAllowed && isHovered
-                      ? `0 20px 60px ${mode.glowColor}, 0 0 0 1px ${mode.accent}30`
-                      : "0 8px 40px rgba(0,0,0,0.6)",
-                    animation: `fadeUp .6s ${idx * 0.1}s cubic-bezier(.23,1,.32,1) both`,
-                  }}
+  position: "relative",
+  background: "#000", // 👈 PURE BLACK CARD
+  border: `1px solid ${
+    isAllowed
+      ? isHovered
+        ? mode.accent + "80"
+        : mode.accent + "40"
+      : "rgba(255,255,255,0.08)"
+  }`,
+  opacity: isAllowed ? 1 : 0.38,
+  cursor: isAllowed ? "pointer" : "not-allowed",
+
+  boxShadow:
+    isAllowed && isHovered
+      ? `0 25px 80px ${mode.glowColor}, 0 0 0 1px ${mode.accent}30`
+      : "0 8px 40px rgba(0,0,0,0.8)",
+
+  animation: `fadeUp .6s ${idx * 0.1}s cubic-bezier(.23,1,.32,1) both`,
+
+  // 👇 3D SETUP
+  transformStyle: "preserve-3d",
+  transition: "transform 0.35s ease, box-shadow 0.35s ease, border 0.35s ease",
+}}
                 >
+
+
+  <video
+    autoPlay
+    loop
+    muted
+    playsInline
+    style={{
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
+      zIndex: -3,
+      opacity: 0.8,
+    }}
+  >
+    <source src="https://www.pexels.com/download/video/35673333/" type="video/mp4" />
+  </video>
                   {/* Badge */}
                   <div style={{
                     position: "absolute", top: 14, right: 14,
@@ -306,8 +336,8 @@ export default function GamePage() {
                       src={mode.icon}
                       alt={mode.label}
                       style={{
-                        width: 110, height: 110,
-                        objectFit: "contain",
+                        width: 180, height: 100,
+                        objectFit: "cover",
                         position: "relative", zIndex: 1,
                         opacity: isAllowed ? 1 : 0.25,
                       }}
@@ -334,7 +364,7 @@ export default function GamePage() {
 
                   {/* Title */}
                   <h2 style={{
-                    fontSize: "clamp(18px,2.5vw,22px)",
+                    fontSize: "clamp(18px,2.9vw,30px)",
                     fontFamily: "Georgia,serif",
                     color: isAllowed ? "#fff" : "rgba(255,255,255,0.2)",
                     marginBottom: 10, fontWeight: 800,
@@ -345,7 +375,7 @@ export default function GamePage() {
 
                   {/* Description */}
                   <p style={{
-                    fontSize: 13,
+                    fontSize: 16,
                     color: isAllowed ? "rgba(220,200,160,0.85)" : "rgba(255,255,255,0.18)",
                     lineHeight: 1.65, flex: 1, marginBottom: 24, fontWeight: 600,
                   }}>

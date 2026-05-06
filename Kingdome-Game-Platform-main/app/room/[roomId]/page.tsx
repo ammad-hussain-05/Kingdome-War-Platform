@@ -120,7 +120,7 @@ export default function RoomPage() {
           pointerEvents: "none",
         }}
       >
-        <source src="https://www.pexels.com/download/video/12783148/" type="video/mp4" />
+        <source src="https://www.pexels.com/download/video/25792126/" type="video/mp4" />
       </video>
 
       {/* ✅ Dark overlay — fixed, har jagah text readable */}
@@ -170,12 +170,44 @@ export default function RoomPage() {
               </span>
             </div>
 
-            <h1 style={{ fontSize:"clamp(2rem,6vw,3.5rem)", fontFamily:"Georgia,serif", color:"#fff", margin:"0 0 8px", lineHeight:1.1, fontWeight:800, textShadow:"0 2px 20px rgba(0,0,0,0.9)" }}>
-              {room?.name ?? "Waiting..."}
-            </h1>
-            <p style={{ fontSize:14, color:"rgba(220,180,100,.8)", fontStyle:"italic", fontFamily:"Georgia,serif", margin:"0 0 40px", fontWeight:600 }}>
-              Waiting for warriors to join the battle
-            </p>
+          <h1
+  style={{
+    fontSize: "clamp(2.2rem, 5vw, 4.8rem)",
+    fontFamily: "'Poppins', 'Segoe UI', sans-serif",
+    color: "rgba(255,255,255,0.95)",
+    margin: "0 0 12px",
+    lineHeight: 1.1,
+    fontWeight: 800,
+    textAlign: "center",
+    letterSpacing: "2px",
+    textTransform: "uppercase",
+    textShadow:
+      "0 2px 10px rgba(0,0,0,0.6), 0 0 25px rgba(255,255,255,0.15)",
+    background: "linear-gradient(90deg, rgba(255,255,255,1), rgba(200,200,200,0.6))",
+    WebkitBackgroundClip: "text",
+    WebkitTextFillColor: "transparent",
+    filter: "drop-shadow(0 10px 30px rgba(0,0,0,0.4))",
+  }}
+>
+  {room?.name ?? "Waiting..."}
+</h1>
+
+
+           <p
+  style={{
+    fontSize: 18,
+    color: "rgba(220,180,100,.8)",
+    fontStyle: "italic",
+    fontFamily: "Georgia,serif",
+    margin: "0 0 40px",
+    fontWeight: 600,
+    textAlign: "center",
+    letterSpacing: "0.5px",
+    textShadow: "0 2px 10px rgba(0,0,0,0.6)",
+  }}
+>
+  Waiting for warriors to join the battle
+</p>
           </div>
 
           {/* Room ID Card */}
@@ -187,14 +219,13 @@ export default function RoomPage() {
             backdropFilter: "blur(70px)",
             boxShadow: `0 0 0px ${accent}0`,
           }}>
-            <p style={{ fontSize:14, letterSpacing:"0.3em", textTransform:"uppercase", color:accent, marginBottom:12, fontWeight:700 }}>
-              Room ID—Share with friends
+            <p style={{ fontSize:14, letterSpacing:"0.3em", textTransform:"uppercase", color:"#d4a843", marginBottom:12, fontWeight:700 }}>
+              Room ID: Share with friends
             </p>
             <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
               <div style={{
                 flex:1, padding:"14px 20px", borderRadius:10,
-                background:"rgba(0,0,0,0.5)",
-                border:`1px solid ${accent}50`,
+                border:"1px solid rgba(255, 255, 255, 0.2)",
                 fontFamily:"monospace", fontSize:"clamp(14px,3vw,22px)",
                 letterSpacing:"0.15em", color:accent,
                 fontWeight:800, userSelect:"all",
@@ -220,7 +251,7 @@ export default function RoomPage() {
 
           {/* Players */}
           <div style={{ animation: mounted ? "fadeUp .6s .2s cubic-bezier(.23,1,.32,1) both" : "none", marginBottom: 24 }}>
-            <p style={{ fontSize:11, letterSpacing:"0.3em", textTransform:"uppercase", color:"rgba(220,180,100,.7)", marginBottom:12, fontWeight:700 }}>
+            <p style={{ fontSize:15, letterSpacing:"0.3em", textTransform:"uppercase", color:"rgba(220,180,100,.7)", marginBottom:12, fontWeight:700 }}>
               Players ({room?.players.length ?? 0}/{maxPlayers})
             </p>
             <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
@@ -250,11 +281,11 @@ export default function RoomPage() {
                     <div style={{ flex:1 }}>
                       {player ? (
                         <>
-                          <div style={{ fontSize:15, color:"#ffffff", fontWeight:800, textShadow:"0 1px 8px rgba(0,0,0,0.9)" }}>
+                          <div style={{ fontSize:19, color:"#ffffff", fontWeight:800, textShadow:"0 1px 8px rgba(0,0,0,0.9)" }}>
                             {player.name}{" "}
-                            {isMe && <span style={{ fontSize:10, color:accent, letterSpacing:"0.1em", fontWeight:700 }}>(You)</span>}
+                            {isMe && <span style={{ fontSize:10, color:"#d4a843", letterSpacing:"0.1em", fontWeight:700 }}>(You)</span>}
                           </div>
-                          <div style={{ fontSize:12, color:`${accent}`, marginTop:2, fontWeight:600 }}>
+                          <div style={{ fontSize:15, color:"#d4a843", marginTop:2, fontWeight:600 }}>
                             {player.color} Player
                           </div>
                         </>
@@ -290,8 +321,8 @@ export default function RoomPage() {
                   width:"100%", padding:"18px", borderRadius:14,
                   fontWeight:800, letterSpacing:"0.15em", textTransform:"uppercase",
                   fontSize:14, border:"none",
-                  background: canStart ? `linear-gradient(135deg,${accent},${accent}bb)` : "rgba(255,255,255,0.06)",
-                  color: canStart ? "#1a0d00" : "rgba(255,255,255,0.3)",
+                  background:"linear-gradient(135deg,#d4a843,#c4912a,#b8862e)",
+                  color: canStart ? "#000" : "rgba(255,255,255,0.3)",
                 }}
               >
                 {canStart
