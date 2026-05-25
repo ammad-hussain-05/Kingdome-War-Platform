@@ -30,11 +30,14 @@ const PIECE_INFO: Record<PieceType12,{name:string;move:string;special:string}> =
   "elvin-archer":{name:"Elvin Archer",move:"Any dir + L-shape + 1 step",special:"Sword/dagger = 1-square paladin move"},
   "paladin":     {name:"Paladin",move:"1 square any direction",special:"Super attack 2-3 squares ONCE only"},
 };
-const AC: Record<PlayerColor,string> = { white:"#e8dfc0", black:"#c8a96e", grey:"#8a9db5" };
-const GL: Record<PlayerColor,string> = { white:"rgba(232,223,192,0.4)", black:"rgba(200,169,110,0.4)", grey:"rgba(138,157,181,0.4)" };
+const AC: Record<PlayerColor,string> = { white:"#e8dfc0", black:"#c8a96e" };
+const GL: Record<PlayerColor,string> = { white:"rgba(232,223,192,0.4)", black:"rgba(200,169,110,0.4)" };
 const ZONE: Record<string,string> = { white:"rgba(232,220,180,0.07)", black:"rgba(200,160,80,0.07)", grey:"rgba(138,157,181,0.07)" };
-function getZone(r:number,c:number):string|null { if(r>=10)return"white"; if(r<=1)return"black"; if(c>=10)return"grey"; return null; }
-
+function getZone(r:number,c:number):string|null { 
+  if(r>=10)return"white"; 
+  if(r<=1)return"black"; 
+  return null; 
+}
 // ─── SOUND ────────────────────────────────────────────────────────────────────
 function snd(type:string){
   if(typeof window==="undefined")return;
@@ -586,7 +589,7 @@ export default function Board12x12({myColor,roomId,playerNames,socket,onGameEnd}
 
         {/* ── LEFT PANEL ── */}
         <div style={{display:"flex",flexDirection:"column",gap:9,width:205,flexShrink:0,animation:"fadeInUp .4s ease"}}>
-          {(["white","black","grey"] as PlayerColor[]).map(c=>(
+          {(["white","black"] as PlayerColor[]).map(c=>(
             <PlayerCard key={c} name={playerNames[c]||c} color={c} isMe={c===myColor} isActive={gs.currentTurn===c} isElim={gs.eliminatedPlayers.includes(c)} captured={gs.capturedBy[c]} inCheck={gs.check===c}/>
           ))}
 

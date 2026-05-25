@@ -167,16 +167,25 @@ export default function GamePage() {
       `}</style>
 
       {/* ✅ Video — fixed, full page cover (UNTOUCHED) */}
-      <video
-        autoPlay loop muted playsInline
-        style={{
-          position: "fixed", top: 0, left: 0,
-          width: "100vw", height: "100vh",
-          objectFit: "cover", zIndex: 2, pointerEvents: "none",
-        }}
-      >
-        <source src="https://www.pexels.com/download/video/25792126/" type="video/mp4" />
-      </video>
+        <video
+  autoPlay
+  loop
+  muted
+  playsInline
+  preload="auto"
+  style={{
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: "100vw",
+    height: "100vh",
+    objectFit: "cover",
+    zIndex: 2,
+    pointerEvents: "none",
+  }}
+>
+  <source src="/video/background-game.mp4" type="video/mp4" />
+</video>
 
       {/* ✅ Dark overlay (UNTOUCHED) */}
       <div style={{
@@ -313,7 +322,7 @@ export default function GamePage() {
       opacity: 0.8,
     }}
   >
-    <source src="https://www.pexels.com/download/video/35673333/" type="video/mp4" />
+    <source src="/video/cards-background.mp4" type="video/mp4" />
   </video>
                   {/* Badge */}
                   <div style={{

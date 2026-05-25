@@ -106,25 +106,25 @@ socketRef.current = socket;
       `}</style>
 
       {/* ✅ Video — fixed taaki header/footer sab cover ho, responsive */}
-      <video
-        autoPlay
-        loop
-        muted
-        playsInline
-        style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          width: "100vw",
-          height: "100vh",
-          objectFit: "cover",
-          zIndex:2,
-          pointerEvents: "none",
-        }}
-      >ttps://www.pexels.com/download/video/33717640/
-        <source src="https://www.pexels.com/download/video/25792126/" type="video/mp4" />
-      </video>
-
+     <video
+  autoPlay
+  loop
+  muted
+  playsInline
+  preload="auto"
+  style={{
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: "100vw",
+    height: "100vh",
+    objectFit: "cover",
+    zIndex: 2,
+    pointerEvents: "none",
+  }}
+>
+  <source src="/video/background-game.mp4" type="video/mp4" />
+</video>
       {/* ✅ Dark overlay — fixed, poore page pe */}
       <div style={{
         position: "fixed",

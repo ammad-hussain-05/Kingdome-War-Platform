@@ -171,16 +171,17 @@ export function Navigation() {
     WebkitBackdropFilter: "blur(20px)"
   }}
 >
-  {/* 🎥 Background Video */}
-  <video
-    autoPlay
-    loop
-    muted
-    playsInline
-    className="absolute top-0 right-0 w-[140%] h-full object-cover object-left z-0"
+{/* 🎥 Background Video */}
+<video
+  autoPlay
+  loop
+  muted
+  playsInline
+  preload="auto"
+  className="absolute top-0 right-0 w-[140%] h-full object-cover object-left z-0"
 >
-    <source src="https://www.pexels.com/download/video/7670836/" type="video/mp4" />
-  </video>
+  <source src="/video/nav-video.mp4" type="video/mp4" />
+</video>
 
   <div className="px-6 py-6 flex flex-col gap-4">
     {allLinks.map((link) => (

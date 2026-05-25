@@ -8,13 +8,12 @@ import { getModeFromRoomId } from "@/lib/lobby/id-generator";
 import { connectSocket } from "@/lib/lobby/socket-client";
 import type { Color } from "@/lib/game/rules-8x8";
 import type { PlayerColor } from "@/lib/game/rules-12x12";
-// import dynamic from "next/dynamic";
-
-// const Board8x8 = dynamic(() => import("@/components/game/board-8x8"), { ssr: false });
-// const Board12x12 = dynamic(() => import("@/components/game/board-12x12"), { ssr: false });
-
 import Board8x8 from "@/components/game/board-8x8";
 import { default as Board12x12 } from "@/components/game/board-12x12";
+import { default as Board16x16 } from "@/components/game/board-16x16";
+import type { PlayerColor16 } from "@/lib/game/rules-16x16";
+
+// const Board16x16 = dynamic(() => import("@/components/game/board-16x16"), { ssr: false });          
 
 export default function BoardPage() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -165,16 +164,29 @@ export default function BoardPage() {
       onGameEnd={(winner) => console.log(`${winner} wins!`)}
     />
   );
+  
+ // ─── 16x16 Board ─────────────────────────────────────────────────────────
+  if (mode === "16x16") return (
+    <Board16x16
+      myColor={myColor as PlayerColor16}
+      roomId={roomId}
+      playerNames={playerNames as Record<PlayerColor16, string>}
+      socket={socketRef.current!}
+      onGameEnd={(winner) => console.log(`${winner} wins!`)}
+    />
+  );
 
-  // ─── Coming soon ─────────────────────────────────────────────────────────
+  // ─── Fallback ─────────────────────────────────────────────────────────────
   return (
     <div style={{
       minHeight: "100vh", display: "flex", alignItems: "center",
       justifyContent: "center", background: "#050301"
     }}>
       <p style={{ color: "#ff8080", fontFamily: "Georgia, serif" }}>
-        Mode {mode} board coming soon!
+        Unknown mode: {mode}
       </p>
     </div>
   );
 }
+  // ─── Coming soon ─────────────────────────────────────────────────────────
+ 

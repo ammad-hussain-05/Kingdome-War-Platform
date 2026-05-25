@@ -1,4 +1,4 @@
-export type PlayerColor = "white" | "black" | "grey";
+export type PlayerColor = "white" | "black" ;
 
 export type PieceType12 =
   | "mystic-king" | "super-queen" | "dragon" | "gargoyle"
@@ -25,7 +25,7 @@ export interface GameState12 {
   board: Board12; currentTurn: PlayerColor;
   turnOrder: PlayerColor[];       // living players only
   eliminatedPlayers: PlayerColor[];
-  capturedBy: Record<PlayerColor, Piece12[]>;
+  capturedBy: Record<"white" | "black", Piece12[]>; // Remove grey
   selectedSquare: Square12 | null; validMoves: Square12[];
   status: "playing" | "finished"; winner: PlayerColor | null;
   lastMove: { from: Square12; to: Square12 } | null;
@@ -50,7 +50,7 @@ export function cloneState12(s: GameState12): GameState12 {
   return {
     ...s, board: cloneBoard12(s.board),
     turnOrder: [...s.turnOrder], eliminatedPlayers: [...s.eliminatedPlayers],
-    capturedBy: { white:[...s.capturedBy.white], black:[...s.capturedBy.black], grey:[...s.capturedBy.grey] },
+    capturedBy: { white:[...s.capturedBy.white], black:[...s.capturedBy.black]},
     validMoves: [...s.validMoves],
     specialData: s.specialData ? { ...s.specialData } : null,
   };
@@ -58,7 +58,7 @@ export function cloneState12(s: GameState12): GameState12 {
 
 export function pieceImagePath(p: Piece12): string {
   const folder = p.color;
-  const suffix = p.color==="white"?"White":p.color==="grey"?"Gray":p.type==="super-knight"?"Black":"black";
+  const suffix = p.color === "white" ? "White" : "Black"; // Remove grey logic
   const nm: Record<PieceType12,string> = {
     "mystic-king":"Mystic King","super-queen":"Super Queen","dragon":"Dragon","gargoyle":"Gargoyle",
     "wizard":"Wizard","sorceress":"Sorceress","super-knight":"Super Knight","assassin":"Assassin",
@@ -83,18 +83,14 @@ export function createInitialBoard12(): Board12 {
   BACK.forEach((t,c)=>{ b[11][c]=mkP(t,"white",`w-b${c}`); b[0][c]=mkP(t,"black",`k-b${c}`); });
   FRONT.forEach((t,c)=>{ b[10][c]=mkP(t,"white",`w-f${c}`); b[1][c]=mkP(t,"black",`k-f${c}`); });
   // Grey on right cols 10-11, rows 2-9
-  [2,3,4,5,6,7,8,9].forEach((row,i)=>{
-    if(i<BACK.length)  b[row][11]=mkP(BACK[i], "grey",`g-b${row}`);
-    if(i<FRONT.length&&!b[row][10]) b[row][10]=mkP(FRONT[i],"grey",`g-f${row}`);
-  });
   return b;
 }
 
 export function createInitialGameState12(): GameState12 {
   return {
     board:createInitialBoard12(), currentTurn:"white",
-    turnOrder:["white","black","grey"], eliminatedPlayers:[],
-    capturedBy:{white:[],black:[],grey:[]},
+    turnOrder:["white","black"], eliminatedPlayers:[],
+    capturedBy:{white:[],black:[]},
     selectedSquare:null, validMoves:[], status:"playing", winner:null,
     lastMove:null, check:null, specialMode:null, specialData:null,
     wishDiceResult:null, turnMovesLeft:1, pendingAxeSquare:null, spellMessage:null,
@@ -252,8 +248,8 @@ export function tickSleep(b:Board12,color:PlayerColor):Board12{
 // A player is eliminated when their Mystic King is captured.
 // Winner = last player remaining in turnOrder.
 function checkWinner(turnOrder: PlayerColor[]): PlayerColor | null {
-  if (turnOrder.length === 1) return turnOrder[0];
-  if (turnOrder.length === 0) return null; // draw / error
+if (turnOrder.length === 1 || turnOrder.includes("grey")) return turnOrder[0];
+ if (turnOrder.length === 0) return null; // draw / error
   return null;
 }
 

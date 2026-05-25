@@ -19,7 +19,7 @@ const MODES = [
     id: "12x12",
     label: "Kingdom War",
     board: "12 × 12",
-    players: "3 Players",
+    players: "2 Players",
     colors: ["⬜ White", "⬛ Black", "🩶 Grey"],
     accent: "#7dbd6e",
     description:
@@ -30,7 +30,7 @@ const MODES = [
     id: "16x16",
     label: "Empire",
     board: "16 × 16",
-    players: "4 Players",
+    players: "2 Players",
     colors: ["⬜ White", "⬛ Black", "🥇 Gold", "🥈 Silver"],
     accent: "#d4a843",
     description:

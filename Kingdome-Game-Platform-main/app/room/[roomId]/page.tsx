@@ -104,25 +104,26 @@ export default function RoomPage() {
         .start-btn:disabled { cursor:not-allowed; }
       `}</style>
 
-      {/* ✅ Video — fixed, poora page cover, responsive */}
-      <video
-        autoPlay
-        loop
-        muted
-        playsInline
-        style={{
-          position: "fixed",
-          top: 0, left: 0,
-          width: "100vw",
-          height: "100vh",
-          objectFit: "cover",
-          zIndex: 2,
-          pointerEvents: "none",
-        }}
-      >
-        <source src="https://www.pexels.com/download/video/25792126/" type="video/mp4" />
-      </video>
-
+        {/* ✅ Video — fixed  */}
+     <video
+  autoPlay
+  loop
+  muted
+  playsInline
+  preload="auto"
+  style={{
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: "100vw",
+    height: "100vh",
+    objectFit: "cover",
+    zIndex: 2,
+    pointerEvents: "none",
+  }}
+>
+  <source src="/video/background-game.mp4" type="video/mp4" />
+</video>
       {/* ✅ Dark overlay — fixed, har jagah text readable */}
       <div style={{
         position: "fixed",
