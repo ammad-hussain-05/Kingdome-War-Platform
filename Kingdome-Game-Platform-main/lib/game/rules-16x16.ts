@@ -107,28 +107,27 @@ export function pieceImagePath16(p: Piece16): string {
   const folder = p.color;
   const suffix = p.color === "white" ? "White" : "Black";
   
-  const nm: Record<PieceType16, string> = {
-    "mystic-king":      `Mystic King ${p.color}`,
-    "super-queen":      `Super Queen ${p.color}`,
-    "dragon":           `Dragon ${suffix}`,
-    "gargoyle":         `Gargoyle ${p.color}`,
-    "wizard":           `Wizard ${p.color}`,
-    "sorceress":        `Sorceress ${p.color}`,
-    "conjurer":         `Conjuror - ${suffix}`,
-    "warlock":          `Warlock - ${suffix}`,
-    "trickster":        `Trickster - ${suffix}`,
-    "super-knight":     `Super Knight ${suffix}`,
-    "elvin-archer":     `Elven Archer ${suffix}`,
-    "executioner":      `Executioner ${p.color}`,
-    "assassin":         `Assassin ${suffix}`,
-    "aerobat-assassin": `Aerobat Assassin - ${suffix}`,
-    "cavalier":         `Cavalier Prince ${suffix}`,
-    "mage":             `Mage-Princess ${suffix}`,
-    "paladin":          `Paladin - ${suffix}`,
-    "archer":           `Elven Archer ${suffix}`,
-    "thief":            `Assassin ${suffix}`,
-  };
-
+const nm: Record<PieceType16, string> = {
+  "mystic-king":      p.color === "white" ? "Mystic King White" : "Mystic King black",
+  "super-queen":      p.color === "white" ? "Super Queen White" : "Super Queen black",
+  "dragon":           p.color === "white" ? "Dragon White" : "Dragon black",
+  "gargoyle":         p.color === "white" ? "Gargoyle White" : "Gargoyle black",
+  "wizard":           p.color === "white" ? "Wizard White" : "Wizard black",
+  "sorceress":        p.color === "white" ? "Sorceress White" : "Sorceress black",
+  "executioner":      p.color === "white" ? "Executioner White" : "Executioner black",
+  "assassin":         p.color === "white" ? "Assassin White" : "Assassin black",
+  "super-knight":     p.color === "white" ? "Super Knight White" : "Super Knight Black",
+  "elvin-archer":     p.color === "white" ? "Elven Archer White" : "Elven Archer Black",
+  "conjurer":         p.color === "white" ? "Conjuror - White" : "Conjuror - Black",
+  "warlock":          p.color === "white" ? "Warlock - White" : "Warlock - Black",
+  "trickster":        p.color === "white" ? "Trickster - White" : "Trickster - Black",
+  "aerobat-assassin": p.color === "white" ? "Aerobat Assassin - White" : "Aerobat Assassin - Black",
+  "cavalier":         p.color === "white" ? "Cavalier Prince White" : "Cavalier Prince Black",
+  "mage":             p.color === "white" ? "Mage-Princess White" : "Mage-Princess Black",
+  "paladin":          p.color === "white" ? "Paladin - White" : "Paladin - Black",
+  "archer":           p.color === "white" ? "Elven Archer White" : "Elven Archer Black",
+  "thief":            p.color === "white" ? "Assassin White" : "Assassin black",
+};
   return `/pieces-16x16/${folder}/${nm[p.type]}.png`;
 }
 // ─── BOARD SETUP ─────────────────────────────────────────────────────────────
