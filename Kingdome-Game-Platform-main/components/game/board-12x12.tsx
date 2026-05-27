@@ -545,8 +545,8 @@ export default function Board12x12({myColor,roomId,playerNames,socket,onGameEnd}
 
   const sendChat=(text:string)=>{const msg:ChatMsg={sender:myColor,text,time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})};setChat(p=>[...p,msg]);socket?.emit("game:chat",{roomId,msg});};
 
-  const rows=myColor==="black"?[...Array(12)].map((_,i)=>11-i):[...Array(12)].map((_,i)=>i);
-  const cols=myColor==="grey"?[...Array(12)].map((_,i)=>11-i):[...Array(12)].map((_,i)=>i);
+const rows=myColor==="black"?[...Array(12)].map((_,i)=>11-i):[...Array(12)].map((_,i)=>i);
+const cols=[...Array(12)].map((_,i)=>i);
 
   return(
     <>
@@ -599,7 +599,7 @@ export default function Board12x12({myColor,roomId,playerNames,socket,onGameEnd}
             <div style={{flex:1}}>
               <p style={{margin:0,fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:".08em",color:gs.check===myColor?"#ff8080":gs.currentTurn===myColor?AC[myColor]:"rgba(180,140,60,.45)"}}>{gs.check===myColor?"Check!":gs.currentTurn===myColor?"Your Move":`${gs.currentTurn}'s Turn`}</p>
               <div style={{display:"flex",gap:5,marginTop:4}}>
-                {(["white","black","grey"] as PlayerColor[]).map(c=>(
+                {(["white","black"] as PlayerColor[]).map(c=>(
                   <div key={c} title={c} style={{width:7,height:7,borderRadius:"50%",background:gs.eliminatedPlayers.includes(c)?"rgba(255,50,50,.2)":gs.currentTurn===c?AC[c]:`${AC[c]}30`,boxShadow:gs.currentTurn===c?`0 0 6px ${GL[c]}`:"none",transition:"all .3s"}}/>
                 ))}
               </div>
@@ -673,7 +673,7 @@ export default function Board12x12({myColor,roomId,playerNames,socket,onGameEnd}
                 }))}
               </div>
             </div>
-            <div style={{writingMode:"vertical-rl",fontSize:10,color:`${AC.grey}60`,letterSpacing:".12em",textTransform:"uppercase",marginLeft:2}}>◀ {playerNames.grey||"GREY"}</div>
+
           </div>
           <div style={{display:"flex",marginLeft:20,marginTop:4,width:boardPx}}>
             {cols.map((c,i)=><div key={i} style={{width:sqSize,textAlign:"center",fontSize:9,color:"rgba(212,168,67,.3)",fontFamily:"monospace"}}>{String.fromCharCode(65+c)}</div>)}

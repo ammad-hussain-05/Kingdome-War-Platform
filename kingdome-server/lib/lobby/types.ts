@@ -1,5 +1,3 @@
-// lib/lobby/types.ts
-
 export type GameMode = "8x8" | "12x12" | "16x16";
 
 export interface Player {
@@ -14,7 +12,7 @@ export interface Room {
   name: string;
   mode: GameMode;
   maxPlayers: number;
-  players: Player[]; // <-- change from string[] to Player[]
+  players: Player[];
   createdAt: number;
   status: "waiting" | "full" | "in-progress";
   hostId: string;
@@ -29,17 +27,17 @@ export const MODE_CONFIG: Record<GameMode, { maxPlayers: number; label: string; 
     colors: ["white", "black"],
   },
   "12x12": {
-    maxPlayers: 3,
+    maxPlayers: 2,          // ← 3 se 2
     label: "Kingdom War",
-    description: "3 Players — White, Black & Grey",
+    description: "2 Players — White vs Black",   // ← updated
     prefix: "KG-12",
-    colors: ["white", "black", "grey"],
+    colors: ["white", "black"],   // ← grey hata diya
   },
   "16x16": {
-    maxPlayers: 4,
+    maxPlayers: 2,          // ← 4 se 2
     label: "Empire",
-    description: "4 Players — White, Black, Gold & Silver",
+    description: "2 Players — White vs Black",   // ← updated
     prefix: "KG-16",
-    colors: ["white", "black", "gold", "silver"],
+    colors: ["white", "black"],   // ← gold/silver hata diye
   },
 };

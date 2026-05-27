@@ -105,7 +105,7 @@ socketRef.current = socket;
         }
       `}</style>
 
-      {/* ✅ Video — fixed taaki header/footer sab cover ho, responsive */}
+      {/* ✅ Video — fixed  */}
      <video
   autoPlay
   loop

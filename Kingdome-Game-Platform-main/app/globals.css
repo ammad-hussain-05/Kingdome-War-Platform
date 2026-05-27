@@ -1,8 +1,11 @@
 @import 'tailwindcss';
+/* styles/globals.css */
+
+/* TailwindCSS + Animate CSS imports */
+
 @import 'tw-animate-css';
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+
+@import 'tw-animate-css';
 @custom-variant dark (&:is(.dark *));
 
 /* Kingdom Come - Medieval Fantasy Theme */

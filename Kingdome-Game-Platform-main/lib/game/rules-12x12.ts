@@ -85,12 +85,33 @@ function mkP(type: PieceType12, color: PlayerColor, id: string): Piece12 {
 }
 
 const BACK: PieceType12[] = [
-  "executioner", "assassin", "super-knight", "gargoyle", "mystic-king",
-  "super-queen", "sorceress", "wizard", "dragon", "super-knight", "assassin", "executioner"
+  "executioner",
+  "assassin",
+  "super-knight",
+  "dragon",
+  "sorceress",
+  "super-queen",
+  "mystic-king",
+  "wizard",
+  "gargoyle",
+  "super-knight",
+  "assassin",
+  "executioner"
 ];
+
 const FRONT: PieceType12[] = [
-  "paladin", "paladin", "cavalier", "elvin-archer", "mage", "paladin",
-  "paladin", "mage", "elvin-archer", "cavalier", "paladin", "paladin"
+  "elvin-archer",
+  "cavalier",
+  "mage",
+  "paladin",
+  "paladin",
+  "paladin",
+  "paladin",
+  "paladin",
+  "paladin",
+  "mage",
+  "cavalier",
+  "elvin-archer"
 ];
 
 export function createInitialBoard12(): Board12 {

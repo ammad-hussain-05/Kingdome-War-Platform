@@ -137,7 +137,7 @@ io.on("connection", (socket) => {
     console.log(`👤 ${playerName} joined room ${roomId}`);
   });
 
-  // ─── GET SINGLE ROOM ───────────────────────────────────────
+
  // ─── GET SINGLE ROOM ───────────────────────────────────────────────────────
 // Yeh sirf is ek handler ko replace karo backend index.ts mein
 

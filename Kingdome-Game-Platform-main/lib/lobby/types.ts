@@ -27,24 +27,25 @@ export const MODE_CONFIG: Record<GameMode, { maxPlayers: number; label: string; 
     colors: ["White", "Black"],
   },
   "12x12": {
-    maxPlayers: 3,
+    maxPlayers: 2,          // ← 3 se 2
     label: "Kingdom War",
-    description: "3 Players — White, Black & Grey",
+    description: "2 Players — White vs Black",   // ← updated
     prefix: "KG-12",
-    colors: ["White", "Black", "Grey"],
+    colors: ["White", "Black"],   // ← Grey hata diya
   },
   "16x16": {
-    maxPlayers: 4,
+    maxPlayers: 2,          // ← 4 se 2
     label: "Empire",
-    description: "4 Players — White, Black, Gold & Silver",
+    description: "2 Players — White vs Black",   // ← updated
     prefix: "KG-16",
-    colors: ["White", "Black", "Gold", "Silver"],
+    colors: ["White", "Black"],   // ← Gold/Silver hata diye
   },
 };
 
 export const COLOR_STYLES: Record<string, { label: string; emoji: string; css: string }> = {
   White:  { label: "White",  emoji: "⬜", css: "#f0f0f0" },
   Black:  { label: "Black",  emoji: "⬛", css: "#2a2a2a" },
+  // Phase 2 ke liye ready rakhte hain:
   Grey:   { label: "Grey",   emoji: "🩶", css: "#808080" },
   Gold:   { label: "Gold",   emoji: "🥇", css: "#d4a843" },
   Silver: { label: "Silver", emoji: "🥈", css: "#a8a8b8" },
