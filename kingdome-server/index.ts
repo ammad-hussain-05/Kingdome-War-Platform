@@ -30,6 +30,8 @@ io.on("connection", (socket) => {
 
   // ─── CREATE ROOM ───────────────────────────────────────────
   socket.on("room:create", ({ name, mode, playerName }: { name: string; mode: GameMode; playerName: string }) => {
+    console.log("ROOM CREATE PAYLOAD:", { name, mode, playerName });
+console.log("MODE EXISTS:", MODE_CONFIG[mode]);
     const cfg = MODE_CONFIG[mode];
 
     if (!cfg) {
@@ -172,6 +174,11 @@ socket.on("room:get", ({ roomId }: { roomId: string }) => {
   // ─── GAME CHAT ─────────────────────────────────────────────
   socket.on("game:chat", ({ roomId, msg }: any) => {
     socket.to(roomId).emit("game:chat", msg);
+  });
+
+  // ─── GAME QUIT (surrender / leave) ──────────────────────────
+  socket.on("game:quit", ({ roomId, ...payload }: any) => {
+    socket.to(roomId).emit("game:quit", payload);
   });
 
   // ─── DISCONNECT ────────────────────────────────────────────

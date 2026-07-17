@@ -1,7 +1,6 @@
 "use client"
 
 import { useRef } from "react"
-import { Cross } from "lucide-react"
 
 export function StorySection() {
   const sectionRef = useRef<HTMLElement>(null)
@@ -27,7 +26,7 @@ export function StorySection() {
         <div className="text-center mb-16">
           <span className="inline-block text-primary/60 text-2xl mb-4">&#9733;</span>
           <h2 className="font-serif text-4xl md:text-5xl text-primary glow-gold mb-4">
-            The Tale of Kingdom Come
+            My Story
           </h2>
           <div className="w-24 h-1 bg-gradient-to-r from-transparent via-primary to-transparent mx-auto" />
         </div>
@@ -41,50 +40,68 @@ export function StorySection() {
           <div className="bg-card/40 backdrop-blur-sm px-6 md:px-12 py-10 medieval-border">
             <div className="prose prose-lg prose-invert max-w-none">
               <p className="text-foreground/90 leading-relaxed mb-6 first-letter:text-5xl first-letter:font-serif first-letter:text-primary first-letter:float-left first-letter:mr-3 first-letter:mt-1">
-                In the heart of America, a young boy named Jose grew up in a family of eleven, 
-                where new toys were but a distant dream. Yet within the walls of their humble 
-                home burned a flame of imagination that no poverty could extinguish.
+                Hello everyone. My name is Jose Ramos. I&apos;m hoping you will purchase my new
+                adventure board game, &ldquo;Kingdom Come.&rdquo;
               </p>
 
               <p className="text-foreground/90 leading-relaxed mb-6">
-                Jose&apos;s brother Bert was blessed with a gift rare and precious — the soul of a 
-                storyteller and the mind of an inventor. Night after night, Bert would weave 
-                tales of knights and kingdoms, of magical creatures and epic battles. But his 
-                greatest dream was one that seemed impossible: to create a chess board where 
-                six players could wage war together.
+                Let me tell you a little about my background.
               </p>
 
               <p className="text-foreground/90 leading-relaxed mb-6">
-                &ldquo;Imagine it, Jose,&rdquo; Bert would say, eyes gleaming in the candlelight. 
-                &ldquo;A game where the Super Queen reigns supreme, where Dragons take flight, 
-                and where Wizards bend the very rules of reality.&rdquo;
+                Coming from a poor family of 11, you can imagine the fights over everything.
+                Growing up poor, we didn&apos;t have very much. We had food, but when it came to
+                money, we lacked severely. I never received anything brand new. Everything was
+                handed down. Also, another thing we never had was toys. When I played with my
+                friend&apos;s toys, I lit up with joy, and my imagination grew.
               </p>
 
               <p className="text-foreground/90 leading-relaxed mb-6">
-                In the year 2012, Bert departed this mortal realm, leaving behind only fragments 
-                of his grand vision — riddles wrapped in sketches, dreams encoded in scattered notes. 
-                Jose, consumed by grief yet determined to honor his brother&apos;s legacy, embarked on 
-                a quest that would span years.
+                My second oldest brother, Bert, was a gifted storyteller. When he told you a
+                story, it was like a higher power or intelligence took over his body. When he
+                spoke, you saw the story like a movie. It was so detailed. He would take you on
+                an adventure, create characters out of thin air, create various personalities,
+                and bring you out as a superhero every time in the end.
+              </p>
+
+              <p className="text-foreground/90 leading-relaxed mb-6">
+                One day, my brother said to me, &ldquo;I&apos;m going to invent a 6-player chess
+                board.&rdquo; I looked at him like, &ldquo;Okay, but how?&rdquo; He never told me.
+              </p>
+
+              <p className="text-foreground/90 leading-relaxed mb-6">
+                My brother, Bert, died in 2012.
+              </p>
+
+              <p className="text-foreground/90 leading-relaxed mb-6">
+                I didn&apos;t want his dream to die with him. Years went by, and I had this riddle
+                locked in my head: &ldquo;What would a 6-player chess board look like?&rdquo;
+              </p>
+
+              <p className="text-foreground/90 leading-relaxed mb-6">
+                Then one day, I had a vision. While playing chess, I asked myself, &ldquo;Why
+                can&apos;t I do this?&rdquo; I thought of my brother&apos;s riddle, &ldquo;a
+                6-player board,&rdquo; and how he created things so easily. So I opened my
+                imagination, took the challenge, understood the riddle, and &ldquo;The Super
+                Queen&rdquo; was born.
+              </p>
+
+              <p className="text-foreground/90 leading-relaxed mb-6">
+                To make a long story short, there is a 6-player board game now, and many others.
+              </p>
+
+              <p className="text-foreground/90 leading-relaxed mb-6">
+                I want to continue Bert&apos;s idea and make him proud. I will make sure that his
+                legacy to create this board game comes to fruition. His dream is also my dream.
+              </p>
+
+              <p className="text-foreground/90 leading-relaxed mb-6">
+                &ldquo;Will you help me make these games come into reality?&rdquo;
               </p>
 
               <p className="text-foreground/90 leading-relaxed mb-8">
-                Through countless nights and tireless days, Jose unraveled each riddle, tested 
-                each concept, until finally — Kingdom Come was born. And with it, The Super Queen, 
-                the most powerful piece ever conceived, the crown jewel of Bert&apos;s impossible dream 
-                made gloriously real.
-              </p>
-            </div>
-
-            {/* Memorial tribute box */}
-            <div className="mt-12 p-6 bg-background/50 border border-primary/30 rounded-lg text-center">
-              <div className="flex items-center justify-center mb-3 text-primary">
-                <Cross className="h-6 w-6" />
-              </div>
-              <h3 className="font-serif text-2xl text-primary mb-2">In Loving Memory</h3>
-              <p className="text-xl text-foreground/90 font-semibold mb-2">Bert Ramos</p>
-              <p className="text-muted-foreground italic text-sm max-w-md mx-auto">
-                &ldquo;A dreamer whose vision transcended the boundaries of any board, 
-                whose spirit now lives on in every game of Kingdom Come.&rdquo;
+                With your order or subscription, you help others believe in their dreams as well.
+                Just like I made mine,
               </p>
             </div>
           </div>

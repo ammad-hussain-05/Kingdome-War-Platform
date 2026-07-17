@@ -2,8 +2,10 @@ import type { Metadata, Viewport } from 'next'
 import { Cinzel_Decorative, Crimson_Text, MedievalSharp } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Navigation } from '@/components/navigation'
-import { Footer } from '@/components/footer'
+import { ConditionalFooter } from '@/components/conditional-footer'
+import GlobalLoaderProvider from '@/components/global-loader-provider'
 import './globals.css'
+
 const cinzelDecorative = Cinzel_Decorative({
   subsets: ['latin'],
   weight: ['400', '700', '900'],
@@ -24,16 +26,25 @@ const medievalSharp = MedievalSharp({
 
 export const metadata: Metadata = {
   title: 'Kingdom Come | The New Phenomenon Adventure Game',
-  description: 'Kingdom Come is a revolutionary medieval fantasy board game featuring 20+ unique characters, magical spells, and epic battles. Experience chess reimagined with The Super Queen, Dragons, Wizards, and more.',
-  keywords: ['board game', 'chess', 'medieval', 'fantasy', 'Kingdom Come', 'strategy game', 'multiplayer'],
+  description:
+    'Kingdom Come is a revolutionary medieval fantasy board game featuring 20+ unique characters, magical spells, and epic battles. Experience chess reimagined with The Super Queen, Dragons, Wizards, and more.',
+  keywords: [
+    'board game',
+    'chess',
+    'medieval',
+    'fantasy',
+    'Kingdom Come',
+    'strategy game',
+    'multiplayer',
+  ],
   authors: [{ name: 'Jose Ramos' }],
   creator: 'Jose Ramos',
   openGraph: {
     title: 'Kingdom Come | The New Phenomenon Adventure Game',
-    description: 'A revolutionary medieval fantasy board game featuring 20+ unique characters with special abilities.',
+    description:
+      'A revolutionary medieval fantasy board game featuring 20+ unique characters with special abilities.',
     type: 'website',
   },
-
   icons: {
     icon: '/logo/logo.png',
     apple: '/logo/logo.png',
@@ -52,13 +63,17 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${cinzelDecorative.variable} ${crimsonText.variable} ${medievalSharp.variable} font-sans antialiased`}>
-        <div className="grain-overlay" aria-hidden="true" />
-        <Navigation />
-        {children}
-        <Footer />
-        <Analytics />
+    <html lang="en" className="dark" data-scroll-behavior="smooth">
+      <body
+        className={`${cinzelDecorative.variable} ${crimsonText.variable} ${medievalSharp.variable} font-sans antialiased`}
+      >
+        <GlobalLoaderProvider>
+          <div className="grain-overlay" aria-hidden="true" />
+          <Navigation />
+          {children}
+          <ConditionalFooter />
+          <Analytics />
+        </GlobalLoaderProvider>
       </body>
     </html>
   )

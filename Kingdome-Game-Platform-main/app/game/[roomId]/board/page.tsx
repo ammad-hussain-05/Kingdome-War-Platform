@@ -12,6 +12,11 @@ import Board8x8 from "@/components/game/board-8x8";
 import { default as Board12x12 } from "@/components/game/board-12x12";
 import { default as Board16x16 } from "@/components/game/board-16x16";
 import type { PlayerColor16 } from "@/lib/game/rules-16x16";
+import TriBoard8x8 from "@/components/game/tri/tri-board8x8";
+import TriBoard12x12 from "@/components/game/tri/tri-board12x12";
+import TriBoard16x16 from "@/components/game/tri/tri-board16x16";
+import { Footer } from "@/components/footer";
+type TriPlayerColor8 = "white" | "black" | "grey";
 
 // const Board16x16 = dynamic(() => import("@/components/game/board-16x16"), { ssr: false });          
 
@@ -99,94 +104,137 @@ export default function BoardPage() {
     };
   }, [roomId]);
 
-  // ─── Loading ──────────────────────────────────────────────────────────────
-  if (loading) return (
-    <div style={{
-      minHeight: "100vh", display: "flex", alignItems: "center",
-      justifyContent: "center",
-      background: "radial-gradient(ellipse at 50% 0%, #2d1506 0%, #0e0804 50%, #050301 100%)"
-    }}>
-      <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 56, marginBottom: 20, animation: "spin 2s linear infinite" }}>⚔️</div>
-        <p style={{ color: "rgba(212,168,67,0.8)", fontFamily: "Georgia, serif", fontSize: 20, fontWeight: 700 }}>
-          Preparing the battlefield...
-        </p>
-        <p style={{ color: "rgba(180,120,50,0.4)", fontSize: 13, marginTop: 8 }}>
-          Connecting players...
-        </p>
-        <style>{`@keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }`}</style>
+  // ─── Resolve page content for the current state / mode ───────────────────
+  let content: React.ReactNode;
+
+  if (loading) {
+    // ─── Loading ─────────────────────────────────────────────────────────
+    content = (
+      <div style={{
+        minHeight: "100vh", display: "flex", alignItems: "center",
+        justifyContent: "center",
+        background: "radial-gradient(ellipse at 50% 0%, #2d1506 0%, #0e0804 50%, #050301 100%)"
+      }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 56, marginBottom: 20, animation: "spin 2s linear infinite" }}>⚔️</div>
+          <p style={{ color: "rgba(212,168,67,0.8)", fontFamily: "Georgia, serif", fontSize: 20, fontWeight: 700 }}>
+            Preparing the battlefield...
+          </p>
+          <p style={{ color: "rgba(180,120,50,0.4)", fontSize: 13, marginTop: 8 }}>
+            Connecting players...
+          </p>
+          <style>{`@keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }`}</style>
+        </div>
       </div>
-    </div>
-  );
+    );
+  } else if (errorMsg || !myColor) {
+    // ─── Error ───────────────────────────────────────────────────────────
+    content = (
+      <div style={{
+        minHeight: "100vh", display: "flex", alignItems: "center",
+        justifyContent: "center", flexDirection: "column", gap: 16,
+        background: "#050301"
+      }}>
+        <p style={{ color: "#ff8080", fontFamily: "Georgia, serif", fontSize: 16, textAlign: "center" }}>
+          {errorMsg || "Could not load. Please go back and rejoin."}
+        </p>
+        <button
+          onClick={() => router.push("/lobby")}
+          style={{
+            padding: "10px 24px", borderRadius: 10, border: "1px solid rgba(212,168,67,0.3)",
+            background: "rgba(212,168,67,0.1)", color: "#d4a843",
+            cursor: "pointer", fontWeight: 700, fontSize: 13,
+          }}
+        >
+          ← Back to Lobby
+        </button>
+      </div>
+    );
+  } else if (mode === "8x8") {
+    // ─── 8x8 Board ───────────────────────────────────────────────────────
+    content = (
+      <Board8x8
+        myColor={myColor as Color}
+        roomId={roomId}
+        playerName={playerName}
+        opponentName={opponentName}
+        socket={socketRef.current!}
+        onGameEnd={(winner) => console.log(`${winner} wins!`)}
+      />
+    );
+  } else if (mode === "12x12") {
+    // ─── 12x12 Board ─────────────────────────────────────────────────────
+    content = (
+      <Board12x12
+        myColor={myColor as PlayerColor}
+        roomId={roomId}
+        playerNames={playerNames as Record<PlayerColor, string>}
+        socket={socketRef.current!}
+        onGameEnd={(winner) => console.log(`${winner} wins!`)}
+      />
+    );
+  } else if (mode === "16x16") {
+    // ─── 16x16 Board ─────────────────────────────────────────────────────
+    content = (
+      <Board16x16
+        myColor={myColor as PlayerColor16}
+        roomId={roomId}
+        playerNames={playerNames as Record<PlayerColor16, string>}
+        socket={socketRef.current!}
+        onGameEnd={(winner) => console.log(`${winner} wins!`)}
+      />
+    );
+  } else if (mode === "tri-8x8") {
+    // ─── Tri 8x8 Board ───────────────────────────────────────────────────
+    content = (
+      <TriBoard8x8
+        myColor={myColor as TriPlayerColor8}
+        roomId={roomId}
+        playerNames={playerNames as Record<TriPlayerColor8, string>}
+        socket={socketRef.current!}
+        onGameEnd={(winner) => console.log(`${winner} wins!`)}
+      />
+    );
+  } else if (mode === "tri-12x12") {
+    // ─── Tri 12x12 Board ─────────────────────────────────────────────────
+    content = (
+      <TriBoard12x12
+        myColor={myColor as TriPlayerColor8}
+        roomId={roomId}
+        playerNames={playerNames as Record<TriPlayerColor8, string>}
+        socket={socketRef.current!}
+        onGameEnd={(winner) => console.log(`${winner} wins!`)}
+      />
+    );
+  } else if (mode === "tri-16x16") {
+    // ─── Tri 16x16 Board ─────────────────────────────────────────────────
+    content = (
+      <TriBoard16x16
+        myColor={myColor as TriPlayerColor8}
+        roomId={roomId}
+        playerNames={playerNames as Record<TriPlayerColor8, string>}
+        socket={socketRef.current!}
+        onGameEnd={(winner) => console.log(`${winner} wins!`)}
+      />
+    );
+  } else {
+    // ─── Fallback ────────────────────────────────────────────────────────
+    content = (
+      <div style={{
+        minHeight: "100vh", display: "flex", alignItems: "center",
+        justifyContent: "center", background: "#050301"
+      }}>
+        <p style={{ color: "#ff8080", fontFamily: "Georgia, serif" }}>
+          Unknown mode: {mode}
+        </p>
+      </div>
+    );
+  }
 
-  // ─── Error ───────────────────────────────────────────────────────────────
-  if (errorMsg || !myColor) return (
-    <div style={{
-      minHeight: "100vh", display: "flex", alignItems: "center",
-      justifyContent: "center", flexDirection: "column", gap: 16,
-      background: "#050301"
-    }}>
-      <p style={{ color: "#ff8080", fontFamily: "Georgia, serif", fontSize: 16, textAlign: "center" }}>
-        {errorMsg || "Could not load. Please go back and rejoin."}
-      </p>
-      <button
-        onClick={() => router.push("/lobby")}
-        style={{
-          padding: "10px 24px", borderRadius: 10, border: "1px solid rgba(212,168,67,0.3)",
-          background: "rgba(212,168,67,0.1)", color: "#d4a843",
-          cursor: "pointer", fontWeight: 700, fontSize: 13,
-        }}
-      >
-        ← Back to Lobby
-      </button>
-    </div>
-  );
-
-  // ─── 8x8 Board ───────────────────────────────────────────────────────────
-  if (mode === "8x8") return (
-    <Board8x8
-      myColor={myColor as Color}
-      roomId={roomId}
-      playerName={playerName}
-      opponentName={opponentName}
-      socket={socketRef.current!}
-      onGameEnd={(winner) => console.log(`${winner} wins!`)}
-    />
-  );
-
-  // ─── 12x12 Board ─────────────────────────────────────────────────────────
-  if (mode === "12x12") return (
-    <Board12x12
-      myColor={myColor as PlayerColor}
-      roomId={roomId}
-      playerNames={playerNames as Record<PlayerColor, string>}
-      socket={socketRef.current!}
-      onGameEnd={(winner) => console.log(`${winner} wins!`)}
-    />
-  );
-  
- // ─── 16x16 Board ─────────────────────────────────────────────────────────
-  if (mode === "16x16") return (
-    <Board16x16
-      myColor={myColor as PlayerColor16}
-      roomId={roomId}
-      playerNames={playerNames as Record<PlayerColor16, string>}
-      socket={socketRef.current!}
-      onGameEnd={(winner) => console.log(`${winner} wins!`)}
-    />
-  );
-
-  // ─── Fallback ─────────────────────────────────────────────────────────────
   return (
-    <div style={{
-      minHeight: "100vh", display: "flex", alignItems: "center",
-      justifyContent: "center", background: "#050301"
-    }}>
-      <p style={{ color: "#ff8080", fontFamily: "Georgia, serif" }}>
-        Unknown mode: {mode}
-      </p>
-    </div>
+    <>
+      {content}
+      <Footer />
+    </>
   );
 }
-  // ─── Coming soon ─────────────────────────────────────────────────────────
- 

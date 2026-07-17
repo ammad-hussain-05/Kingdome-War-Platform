@@ -7,17 +7,34 @@ import { Room, COLOR_STYLES, MODE_CONFIG } from "@/lib/lobby/types";
 import { getModeFromRoomId } from "@/lib/lobby/id-generator";
 import { createSocket } from "@/lib/lobby/socket-client";
 import { getActiveSocket, setActiveSocket } from "@/lib/lobby/room-store";
+import { Footer } from "@/components/footer";
 
-const MODE_COLORS: Record<string, string> = {
-  "8x8": "#6b9fd4",
-  "12x12": "#7dbd6e",
-  "16x16": "#d4a843",
+const MODE_COLORS: Record<string,string> = {
+  "8x8": "#d4a843",
+  "12x12": "#b8932e",
+  "16x16": "#e8c96a",
+
+  "tri-8x8": "#4f8cff",
+  "tri-12x12": "#5a95ff",
+  "tri-16x16": "#6ea4ff",
+
+  "x-8x8": "#c084fc",
+  "x-12x12": "#d39cff",
+  "x-16x16": "#e0b8ff",
 };
 
-const MODE_ICONS: Record<string, string> = {
-  "8x8": "⚔️",
-  "12x12": "🏰",
-  "16x16": "👑",
+const MODE_ICONS: Record<string,string> = {
+  "8x8":"⚔️",
+  "12x12":"🏰",
+  "16x16":"👑",
+
+  "tri-8x8":"🔺",
+  "tri-12x12":"🔺",
+  "tri-16x16":"🔺",
+
+  "x-8x8":"✦",
+  "x-12x12":"✦",
+  "x-16x16":"✦",
 };
 
 export default function RoomPage() {
@@ -79,7 +96,9 @@ export default function RoomPage() {
   };
 
   const isHost = room?.hostId === socketRef.current?.id;
-  const canStart = room && room.players.length >= 2;
+  const canStart =
+  room &&
+  room.players.length >= (mode ? MODE_CONFIG[mode].maxPlayers : 2);
   const maxPlayers = mode ? MODE_CONFIG[mode].maxPlayers : 2;
 
   return (
@@ -350,6 +369,8 @@ export default function RoomPage() {
 
         </div>
       </div>
+
+      <Footer />
     </>
   );
 }

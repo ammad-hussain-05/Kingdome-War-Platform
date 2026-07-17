@@ -2,12 +2,11 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getActiveSocket } from "@/lib/lobby/room-store";
+import { getActiveSocket, setActiveSocket } from "@/lib/lobby/room-store";
 import { createSocket } from "@/lib/lobby/socket-client";
-import { setActiveSocket } from "@/lib/lobby/room-store";
-import { Room, MODE_CONFIG } from "@/lib/lobby/types";
+import { Room } from "@/lib/lobby/types";
 import { getModeFromRoomId } from "@/lib/lobby/id-generator";
-import Image from "next/image";
+import { Footer } from "@/components/footer";
 
 const MODES = [
   {
@@ -15,36 +14,79 @@ const MODES = [
     label: "Basic War",
     board: "8 × 8",
     players: "2 Players",
-    accent: "#d4a843", // Changed from blue to golden
     description: "The classic duel. Two kingdoms clash on a compact battlefield.",
     icon: "/icons/basic.png",
-    glowColor: "rgba(212,168,67,0.35)", // Changed to golden glow
   },
   {
     id: "12x12",
     label: "Kingdom War",
     board: "12 × 12",
-    players: "3 Players",
-    accent: "#b8932e", // Changed from green to deep brown/gold
-    description: "Three rival kingdoms fight for supremacy.",
+    players: "2 Players",
+    description: "Two kingdoms clash on a larger battlefield.",
     icon: "/icons/kingdome.png",
-    glowColor: "rgba(184,147,46,0.35)", // Changed to golden glow
   },
   {
     id: "16x16",
     label: "Empire",
     board: "16 × 16",
-    players: "4 Players",
-    accent: "#e8c96a", // Kept golden
-    description: "The grand war. Four empires collide on a massive board.",
+    players: "2 Players",
+    description: "A grand two-player empire war on a massive board.",
     icon: "/icons/empire.png",
-    glowColor: "rgba(232,201,106,0.35)", // Added matching glow
+  },
+  {
+    id: "tri-8x8",
+    label: "Basic Tri War",
+    board: "Tri 8 × 8",
+    players: "3 Players",
+    description: "Three kingdoms enter a connected triangular battlefield.",
+    icon: "/icons/basic.png",
+  },
+  {
+    id: "tri-12x12",
+    label: "Kingdom Tri War",
+    board: "Tri 12 × 12",
+    players: "3 Players",
+    description: "A three-player triangular kingdom war with larger tactical space.",
+    icon: "/icons/kingdome.png",
+  },
+  {
+    id: "tri-16x16",
+    label: "Empire Tri War",
+    board: "Tri 16 × 16",
+    players: "3 Players",
+    description: "Three empires fight through a connected tri-board battlefield.",
+    icon: "/icons/empire.png",
+  },
+  {
+    id: "x-8x8",
+    label: "Basic X War",
+    board: "X 8 × 8",
+    players: "4 Players",
+    description: "Four kingdoms connect through an X-board battlefield.",
+    icon: "/icons/basic.png",
+  },
+  {
+    id: "x-12x12",
+    label: "Kingdom X War",
+    board: "X 12 × 12",
+    players: "4 Players",
+    description: "Four kingdoms clash across connected square board zones.",
+    icon: "/icons/kingdome.png",
+  },
+  {
+    id: "x-16x16",
+    label: "Empire X War",
+    board: "X 16 × 16",
+    players: "4 Players",
+    description: "A massive four-player empire battlefield with X-board connection.",
+    icon: "/icons/empire.png",
   },
 ];
 
 export default function GamePage() {
   const { roomId } = useParams<{ roomId: string }>();
   const router = useRouter();
+
   const [room, setRoom] = useState<Room | null>(null);
   const [error, setError] = useState("");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -83,6 +125,7 @@ export default function GamePage() {
       setError(`❌ This room is for ${roomMode} mode only! You cannot enter a different board.`);
       return;
     }
+
     router.push(`/game/${roomId}/board`);
   };
 
@@ -90,184 +133,264 @@ export default function GamePage() {
     <>
       <style>{`
         @keyframes fadeUp {
-          from { opacity:0; transform:translateY(28px); }
-          to   { opacity:1; transform:translateY(0); }
-        }
-        @keyframes iconFloat {
-          0%,100% { transform: translateY(0px) scale(1); }
-          50%      { transform: translateY(-8px) scale(1.04); }
-        }
-        @keyframes cardGlow {
-          0%,100% { box-shadow: 0 8px 40px rgba(0,0,0,0.6); }
-          50%      { box-shadow: 0 8px 60px rgba(0,0,0,0.8); }
-        }
-        @keyframes shimmer {
-          0%   { background-position: -200% center; }
-          100% { background-position:  200% center; }
-        }
-        @keyframes pulse-ring {
-          0%   { transform: scale(0.95); opacity:.6; }
-          100% { transform: scale(1.15); opacity:0; }
+          from { opacity:0; transform:translateY(26px); }
+          to { opacity:1; transform:translateY(0); }
         }
 
-        .mode-card {
-          position: relative;
-          border-radius: 20px;
-          padding: 32px 28px 28px;
-          display: flex;
-          flex-direction: column;
-          transition: transform 0.35s cubic-bezier(.23,1,.32,1), box-shadow 0.35s ease, border-color 0.3s;
-          backdrop-filter: blur(20px);
-          overflow: hidden;
+        @keyframes goldPulse {
+          0%,100% {
+            box-shadow:
+              0 0 0 1px rgba(212,168,67,.55),
+              0 0 34px rgba(212,168,67,.38),
+              0 0 90px rgba(212,168,67,.14);
+          }
+          50% {
+            box-shadow:
+              0 0 0 1px rgba(245,211,111,.9),
+              0 0 48px rgba(212,168,67,.55),
+              0 0 130px rgba(212,168,67,.25);
+          }
         }
-        .mode-card::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, transparent 60%);
-          pointer-events: none;
-          border-radius: 20px;
+
+        @keyframes goldLineMove {
+          0% { transform:translateX(-120%); opacity:.2; }
+          35% { opacity:1; }
+          100% { transform:translateX(240%); opacity:.2; }
         }
-        .mode-card.allowed:hover {
-          transform: translateY(-8px) scale(1.02);
+
+        @keyframes iconFloat {
+          0%,100% { transform:translateY(0) scale(1); }
+          50% { transform:translateY(-7px) scale(1.05); }
         }
-        .mode-card.allowed:hover .card-icon {
-          animation: iconFloat 2s ease-in-out infinite;
+
+        @keyframes shimmer {
+          0% { background-position:-220% center; }
+          100% { background-position:220% center; }
+        }
+
+        .board-grid {
+          display:grid;
+          grid-template-columns:repeat(3,minmax(0,1fr));
+          gap:26px;
+        }
+
+        .battle-card {
+          position:relative;
+          min-height:390px;
+          border-radius:26px;
+          padding:34px;
+          overflow:hidden;
+          background:
+            radial-gradient(circle at 50% 0%,rgba(255,210,110,.08),transparent 36%),
+            linear-gradient(180deg,rgba(18,18,17,.96),rgba(7,7,7,.98));
+          border:1px solid rgba(212,168,67,.26);
+          transition:transform .35s ease, opacity .35s ease, filter .35s ease;
+          animation:fadeUp .65s cubic-bezier(.23,1,.32,1) both;
+        }
+
+        .battle-card.allowed {
+          animation:fadeUp .65s cubic-bezier(.23,1,.32,1) both, goldPulse 3.6s ease-in-out infinite;
+        }
+
+        .battle-card.allowed:hover {
+          transform:translateY(-8px) scale(1.018);
+        }
+
+        .battle-card.allowed:hover .battle-icon {
+          animation:iconFloat 2s ease-in-out infinite;
+        }
+
+        .battle-card.locked {
+          opacity:.42;
+          filter:grayscale(.45);
+        }
+
+        .battle-card::before {
+          content:"";
+          position:absolute;
+          inset:1px;
+          border-radius:25px;
+          background:
+            linear-gradient(135deg,rgba(255,255,255,.06),transparent 36%),
+            radial-gradient(circle at 50% 100%,rgba(212,168,67,.10),transparent 36%);
+          pointer-events:none;
+          z-index:1;
+        }
+
+        .battle-card::after {
+          content:"";
+          position:absolute;
+          left:28px;
+          right:28px;
+          bottom:0;
+          height:2px;
+          background:linear-gradient(90deg,transparent,#8a4f10,#f0c75e,#d4a843,transparent);
+          filter:blur(.6px);
+          opacity:.8;
+          z-index:3;
+        }
+
+        .gold-runner {
+          position:absolute;
+          left:0;
+          bottom:0;
+          width:42%;
+          height:2px;
+          background:linear-gradient(90deg,transparent,#fff0a8,#d4a843,transparent);
+          filter:blur(.7px);
+          animation:goldLineMove 3.8s linear infinite;
+          z-index:4;
         }
 
         .enter-btn {
-          position: relative;
-          overflow: hidden;
-          transition: all 0.3s cubic-bezier(.23,1,.32,1);
-          border: none;
-          cursor: pointer;
+          position:relative;
+          overflow:hidden;
+          transition:all .25s ease;
         }
-        .enter-btn::after {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.2) 50%, transparent 60%);
-          background-size: 200% 100%;
-          animation: shimmer 2.5s infinite;
-        }
-        .enter-btn:not(:disabled):hover {
-          transform: translateY(-2px);
-          filter: brightness(1.15);
-        }
-        .enter-btn:disabled { cursor: not-allowed; }
 
-        @media (max-width: 768px) {
-          .modes-grid { grid-template-columns: 1fr !important; }
-          .mode-card  { padding: 24px 20px 20px !important; }
+        .enter-btn::after {
+          content:"";
+          position:absolute;
+          inset:0;
+          background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.24) 50%,transparent 60%);
+          background-size:220% 100%;
+          animation:shimmer 3s infinite;
+          pointer-events:none;
         }
-        @media (max-width: 480px) {
-          .page-title  { font-size: 2rem !important; }
-          .back-btn    { top: 16px !important; left: 16px !important; }
+
+        .enter-btn:not(:disabled):hover {
+          transform:translateY(-2px);
+          filter:brightness(1.1);
+        }
+
+        @media (max-width:1100px) {
+          .board-grid {
+            grid-template-columns:repeat(2,minmax(0,1fr));
+          }
+        }
+
+        @media (max-width:760px) {
+          .board-grid {
+            grid-template-columns:1fr;
+          }
+
+          .battle-card {
+            min-height:340px;
+            padding:26px;
+          }
+
+          .back-btn {
+            position:relative !important;
+            top:auto !important;
+            left:auto !important;
+            margin-bottom:24px !important;
+          }
         }
       `}</style>
 
-      {/* ✅ Video — fixed, full page cover (UNTOUCHED) */}
-        <video
-  autoPlay
-  loop
-  muted
-  playsInline
-  preload="auto"
-  style={{
-    position: "fixed",
-    top: 0,
-    left: 0,
-    width: "100vw",
-    height: "100vh",
-    objectFit: "cover",
-    zIndex: 2,
-    pointerEvents: "none",
-  }}
->
-  <source src="/video/background-game.mp4" type="video/mp4" />
-</video>
+      <video
+        autoPlay
+        loop
+        muted
+        playsInline
+        preload="auto"
+        style={{
+          position: "fixed",
+          inset: 0,
+          width: "100vw",
+          height: "100vh",
+          objectFit: "cover",
+          zIndex: 1,
+          pointerEvents: "none",
+        }}
+      >
+        <source src="/video/background-game.mp4" type="video/mp4" />
+      </video>
 
-      {/* ✅ Dark overlay (UNTOUCHED) */}
-      <div style={{
-        position: "fixed", top: 0, left: 0,
-        width: "100vw", height: "100vh",
-        background: "rgba(4,2,0,0.78)",
-        zIndex: 1, pointerEvents: "none",
-      }} />
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          background:
+            "radial-gradient(circle at center,rgba(40,24,8,.35),rgba(0,0,0,.86) 58%,#000 100%)",
+          zIndex: 2,
+          pointerEvents: "none",
+        }}
+      />
 
-      {/* Page */}
-      <div className="relative min-h-screen flex flex-col items-center px-4 overflow-hidden" style={{ zIndex: 2 }}>
-        <div className="relative w-full pb-16" style={{ paddingTop: "clamp(80px,12vw,120px)", maxWidth: 1100, margin: "0 auto" }}>
-
-          {/* Back (UNTOUCHED LOGIC) */}
+      <div style={{ position: "relative", zIndex: 3, minHeight: "100vh", padding: "125px 24px 90px" }}>
+        <div style={{ maxWidth: 1400, margin: "0 auto", position: "relative" }}>
           <button
             className="back-btn"
             onClick={() => router.push("/lobby")}
             style={{
-              position: "absolute", top: 128, left: 0,
-              fontSize: 12, letterSpacing: "0.15em", textTransform: "uppercase",
-              color: "rgba(220,180,100,.7)", background: "none", border: "none",
-              cursor: "pointer", fontWeight: 700, transition: "color .2s",
+              position: "absolute",
+              top: 8,
+              left: 0,
+              background: "rgba(0,0,0,.35)",
+              border: "1px solid rgba(212,168,67,.25)",
+              color: "rgba(240,210,138,.72)",
+              borderRadius: 999,
+              padding: "9px 14px",
+              cursor: "pointer",
+              fontSize: 11,
+              fontWeight: 800,
+              letterSpacing: ".12em",
+              textTransform: "uppercase",
             }}
-            onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = "#d4a843"}
-            onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = "rgba(220,180,100,.7)"}
           >
-            ← Back to Lobby
+            ← Back
           </button>
 
-          {/* Header (Colors updated to brown/gold/white) */}
-          <div style={{ textAlign: "center", marginBottom: 48, animation: "fadeUp .7s cubic-bezier(.23,1,.32,1) both" }}>
-            <div style={{
-              display: "inline-flex", alignItems: "center", gap: 8,
-              marginBottom: 16, padding: "6px 18px", borderRadius: 999,
-              background: "rgba(212,168,67,0.12)", border: "1px solid rgba(212,168,67,0.35)",
-            }}>
-              <span style={{ fontSize: 11, letterSpacing: "0.35em", textTransform: "uppercase", color: "#e8c96a", fontWeight: 800 }}>
-                ⚔ Game Started
-              </span>
-            </div>
-
-            <h1 className="page-title" style={{
-              fontSize: "clamp(2rem,6vw,3.8rem)", fontFamily: "Georgia,serif",
-              color: "#fff", fontWeight: 800, margin: "0 0 12px",
-              textShadow: "0 2px 24px rgba(0,0,0,0.9)",
-            }}>
+          <div style={{ textAlign: "center", marginBottom: 42 }}>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: "clamp(40px,6vw,76px)",
+                fontFamily: "Georgia,serif",
+                color: "#fff",
+                fontWeight: 900,
+                lineHeight: 1,
+                textShadow: "0 5px 30px rgba(0,0,0,.9)",
+              }}
+            >
               Select Your Board
             </h1>
 
-            <p style={{ fontSize: 18, color: "rgba(220,180,100,.75)", fontWeight: 600, marginBottom: 6 }}>
-              Room ID :{" "}
-              <span style={{ color: "#e8c96a", fontFamily: "monospace", fontWeight: 800, letterSpacing: "0.1em" }}>
+            <p style={{ margin: "18px 0 0", color: "rgba(240,210,138,.72)", fontWeight: 800 }}>
+              Room ID:{" "}
+              <span style={{ color: "#f0c75e", fontFamily: "monospace", letterSpacing: ".08em" }}>
                 {roomId}
               </span>
             </p>
 
             {roomMode && (
-              <p style={{ fontSize: 15, color: "rgba(255,255,255,.55)", fontWeight: 600 }}>
-                This room supports :{" "}
-                <span style={{ color: "#d4a843",fontSize: 18, fontWeight: 800 }}>{roomMode}  mode only</span>
+              <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,.62)", fontWeight: 700 }}>
+                This room supports:{" "}
+                <span style={{ color: "#d4a843", fontWeight: 900 }}>{roomMode} mode only</span>
               </p>
             )}
           </div>
 
-          {/* Error (Colors updated to brown/gold) */}
           {error && (
-            <div style={{
-              maxWidth: 640, margin: "0 auto 32px",
-              padding: "14px 20px", borderRadius: 12, textAlign: "center",
-              background: "rgba(212,168,67,0.1)", border: "1px solid rgba(212,168,67,0.4)",
-              color: "#e8c96a", fontSize: 14, fontWeight: 700,
-            }}>
+            <div
+              style={{
+                maxWidth: 760,
+                margin: "0 auto 28px",
+                padding: "14px 18px",
+                borderRadius: 14,
+                background: "rgba(80,20,10,.42)",
+                border: "1px solid rgba(212,168,67,.38)",
+                color: "#f0c75e",
+                textAlign: "center",
+                fontWeight: 800,
+              }}
+            >
               {error}
             </div>
           )}
 
-          {/* Mode Cards (Transparent glass bg + brown/gold colors) */}
-          <div className="modes-grid" style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 24,
-          }}>
+          <div className="board-grid">
             {MODES.map((mode, idx) => {
               const isAllowed = mode.id === roomMode;
               const isHovered = hoveredId === mode.id;
@@ -275,154 +398,157 @@ export default function GamePage() {
               return (
                 <div
                   key={mode.id}
-                  className={`mode-card ${isAllowed ? "allowed" : ""}`}
+                  className={`battle-card ${isAllowed ? "allowed" : "locked"}`}
                   onClick={() => handleModeSelect(mode.id)}
                   onMouseEnter={() => isAllowed && setHoveredId(mode.id)}
                   onMouseLeave={() => setHoveredId(null)}
                   style={{
-  position: "relative",
-  background: "#000", // 👈 PURE BLACK CARD
-  border: `1px solid ${
-    isAllowed
-      ? isHovered
-        ? mode.accent + "80"
-        : mode.accent + "40"
-      : "rgba(255,255,255,0.08)"
-  }`,
-  opacity: isAllowed ? 1 : 0.38,
-  cursor: isAllowed ? "pointer" : "not-allowed",
-
-  boxShadow:
-    isAllowed && isHovered
-      ? `0 25px 80px ${mode.glowColor}, 0 0 0 1px ${mode.accent}30`
-      : "0 8px 40px rgba(0,0,0,0.8)",
-
-  animation: `fadeUp .6s ${idx * 0.1}s cubic-bezier(.23,1,.32,1) both`,
-
-  // 👇 3D SETUP
-  transformStyle: "preserve-3d",
-  transition: "transform 0.35s ease, box-shadow 0.35s ease, border 0.35s ease",
-}}
+                    animationDelay: `${idx * 0.05}s`,
+                    cursor: isAllowed ? "pointer" : "not-allowed",
+                    transform: isHovered ? "translateY(-8px) scale(1.018)" : undefined,
+                  }}
                 >
+                  <div className="gold-runner" />
 
-
-  <video
-    autoPlay
-    loop
-    muted
-    playsInline
-    style={{
-      position: "absolute",
-      top: 0,
-      left: 0,
-      width: "100%",
-      height: "100%",
-      objectFit: "cover",
-      zIndex: -3,
-      opacity: 0.8,
-    }}
-  >
-    <source src="/video/cards-background.mp4" type="video/mp4" />
-  </video>
-                  {/* Badge */}
-                  <div style={{
-                    position: "absolute", top: 14, right: 14,
-                    padding: "4px 10px", borderRadius: 999,
-                    background: isAllowed ? "rgba(212,168,67,0.15)" : "rgba(255,255,255,0.05)",
-                    border: `1px solid ${isAllowed ? "rgba(212,168,67,0.4)" : "rgba(255,255,255,0.1)"}`,
-                    color: isAllowed ? "#e8c96a" : "rgba(255,255,255,0.4)",
-                    fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 800,
-                  }}>
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 20,
+                      right: 20,
+                      zIndex: 5,
+                      padding: "7px 14px",
+                      borderRadius: 999,
+                      background: isAllowed ? "rgba(212,168,67,.18)" : "rgba(255,255,255,.045)",
+                      border: isAllowed
+                        ? "1px solid rgba(212,168,67,.48)"
+                        : "1px solid rgba(255,255,255,.11)",
+                      color: isAllowed ? "#f5d36f" : "rgba(255,255,255,.45)",
+                      fontSize: 11,
+                      fontWeight: 900,
+                      letterSpacing: ".12em",
+                      textTransform: "uppercase",
+                    }}
+                  >
                     {isAllowed ? "✓ Your Mode" : "🔒 Locked"}
                   </div>
 
-                  {/* Icon */}
-                  <div className="card-icon" style={{
-                    width: 110, height: 110, marginBottom: 24,
-                    position: "relative",
-                  }}>
-                    <img
-                      src={mode.icon}
-                      alt={mode.label}
+                  <div style={{ position: "relative", zIndex: 5 }}>
+                    <div
+                      className="battle-icon"
                       style={{
-                        width: 180, height: 100,
-                        objectFit: "cover",
-                        position: "relative", zIndex: 1,
-                        opacity: isAllowed ? 1 : 0.25,
+                        width: 120,
+                        height: 92,
+                        marginBottom: 22,
+                        opacity: isAllowed ? 1 : 0.38,
                       }}
-                    />
+                    >
+                      <img
+                        src={mode.icon}
+                        alt={mode.label}
+                        style={{
+                          width: 132,
+                          height: 92,
+                          objectFit: "contain",
+                          filter: isAllowed
+                            ? "drop-shadow(0 12px 20px rgba(0,0,0,.75)) brightness(1.25)"
+                            : "grayscale(1) brightness(.6)",
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
+                      <span
+                        style={{
+                          padding: "6px 13px",
+                          borderRadius: 10,
+                          background: "rgba(212,168,67,.16)",
+                          color: "#d4a843",
+                          border: "1px solid rgba(212,168,67,.28)",
+                          fontSize: 12,
+                          fontWeight: 900,
+                        }}
+                      >
+                        {mode.board}
+                      </span>
+                      <span
+                        style={{
+                          padding: "6px 13px",
+                          borderRadius: 10,
+                          background: "rgba(255,255,255,.07)",
+                          color: "rgba(255,255,255,.74)",
+                          border: "1px solid rgba(255,255,255,.12)",
+                          fontSize: 12,
+                          fontWeight: 800,
+                        }}
+                      >
+                        {mode.players}
+                      </span>
+                    </div>
+
+                    <h2
+                      style={{
+                        margin: "0 0 14px",
+                        fontSize: "clamp(28px,3vw,44px)",
+                        color: isAllowed ? "#fff" : "rgba(255,255,255,.48)",
+                        fontFamily: "Georgia,serif",
+                        fontWeight: 900,
+                        lineHeight: 1.05,
+                        textShadow: "0 2px 18px rgba(0,0,0,.8)",
+                      }}
+                    >
+                      {mode.label}
+                    </h2>
+
+                    <p
+                      style={{
+                        margin: "0 0 28px",
+                        color: isAllowed ? "rgba(245,226,190,.82)" : "rgba(255,255,255,.45)",
+                        fontSize: 17,
+                        lineHeight: 1.55,
+                        fontWeight: 650,
+                        maxWidth: 390,
+                      }}
+                    >
+                      {mode.description}
+                    </p>
+
+                    <button
+                      className="enter-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleModeSelect(mode.id);
+                      }}
+                      disabled={!isAllowed}
+                      style={{
+                        width: "100%",
+                        height: 64,
+                        borderRadius: 15,
+                        border: isAllowed
+                          ? "1px solid rgba(255,230,150,.5)"
+                          : "1px solid rgba(255,255,255,.08)",
+                        background: isAllowed
+                          ? "linear-gradient(180deg,#f6ce63,#d4a843 55%,#9a6618)"
+                          : "rgba(255,255,255,.045)",
+                        color: isAllowed ? "#120800" : "rgba(255,255,255,.26)",
+                        fontSize: 14,
+                        fontWeight: 900,
+                        letterSpacing: ".18em",
+                        textTransform: "uppercase",
+                        cursor: isAllowed ? "pointer" : "not-allowed",
+                        boxShadow: isAllowed ? "0 0 32px rgba(212,168,67,.30)" : "none",
+                      }}
+                    >
+                      {isAllowed ? "Enter Battle →" : "Not Available"}
+                    </button>
                   </div>
-
-                  {/* Tags */}
-                  <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-                    <span style={{
-                      fontSize: 11, padding: "3px 10px", borderRadius: 6,
-                      background: `${mode.accent}22`, color: mode.accent,
-                      fontWeight: 800, border: `1px solid ${mode.accent}30`,
-                    }}>
-                      {mode.board}
-                    </span>
-                    <span style={{
-                      fontSize: 11, padding: "3px 10px", borderRadius: 6,
-                      background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.65)",
-                      fontWeight: 700, border: "1px solid rgba(255,255,255,0.1)",
-                    }}>
-                      {mode.players}
-                    </span>
-                  </div>
-
-                  {/* Title */}
-                  <h2 style={{
-                    fontSize: "clamp(18px,2.9vw,30px)",
-                    fontFamily: "Georgia,serif",
-                    color: isAllowed ? "#fff" : "rgba(255,255,255,0.2)",
-                    marginBottom: 10, fontWeight: 800,
-                    textShadow: isAllowed ? "0 2px 12px rgba(0,0,0,0.8)" : "none",
-                  }}>
-                    {mode.label}
-                  </h2>
-
-                  {/* Description */}
-                  <p style={{
-                    fontSize: 16,
-                    color: isAllowed ? "rgba(220,200,160,0.85)" : "rgba(255,255,255,0.18)",
-                    lineHeight: 1.65, flex: 1, marginBottom: 24, fontWeight: 600,
-                  }}>
-                    {mode.description}
-                  </p>
-
-                  {/* Divider */}
-                  {isAllowed && (
-                    <div style={{
-                      height: 1, marginBottom: 20,
-                      background: `linear-gradient(to right, transparent, ${mode.accent}50, transparent)`,
-                    }} />
-                  )}
-
-                  {/* Button (UNTOUCHED LOGIC, only colors updated) */}
-                  <button
-                    className="enter-btn"
-                    onClick={e => { e.stopPropagation(); handleModeSelect(mode.id); }}
-                    disabled={!isAllowed}
-                    style={{
-                      width: "100%", padding: "14px",
-                      borderRadius: 12, fontWeight: 800,
-                      letterSpacing: "0.15em", textTransform: "uppercase",
-                      fontSize: 12,
-                      background: isAllowed
-                        ? `linear-gradient(135deg, ${mode.accent}, ${mode.accent}aa)`
-                        : "rgba(255,255,255,0.04)",
-                      color: isAllowed ? "#1a0d00" : "rgba(255,255,255,0.12)",
-                    }}
-                  >
-                    {isAllowed ? "Enter Battle →" : "Not Available"}
-                  </button>
                 </div>
               );
             })}
           </div>
         </div>
       </div>
+
+      <Footer />
     </>
   );
 }

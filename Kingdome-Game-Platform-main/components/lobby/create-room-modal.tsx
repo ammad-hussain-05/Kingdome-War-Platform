@@ -4,11 +4,20 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { connectSocket } from "@/lib/lobby/socket-client";
 import { GameMode, MODE_CONFIG } from "@/lib/lobby/types";
+import { useLoader } from '@/components/global-loader-provider'
 
 const MODE_ICONS: Record<GameMode, string> = {
   "8x8": "/icons/basic.png",
   "12x12": "/icons/kingdome.png",
-  "16x16": "/icons/empire.png"
+  "16x16": "/icons/empire.png",
+
+  "tri-8x8": "/icons/basic.png",
+  "tri-12x12": "/icons/kingdome.png",
+  "tri-16x16": "/icons/empire.png",
+
+  "x-8x8": "/icons/basic.png",
+  "x-12x12": "/icons/kingdome.png",
+  "x-16x16": "/icons/empire.png",
 };
 export default function CreateRoomModal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
@@ -17,11 +26,11 @@ export default function CreateRoomModal({ onClose }: { onClose: () => void }) {
   const [selectedMode, setSelectedMode] = useState<GameMode | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const { runLoader } = useLoader()
 
   const handleCreate = () => {
-    if (!roomName.trim() || !playerName.trim() || !selectedMode) return;
-    setLoading(true);
-    setError("");
+    if (!canCreate || loading) return
+
 
     const socket = connectSocket();
 
@@ -174,13 +183,16 @@ export default function CreateRoomModal({ onClose }: { onClose: () => void }) {
   padding:"16px", pointerEvents:"none",
 }}>
   <div style={{
-    width:"100%", maxWidth:490,
+width:"96vw",
+maxWidth:1180,
+maxHeight:"92vh",
+overflowY:"hidden",
     borderRadius:26,
     padding:"clamp(24px,5vw,38px)",
     animation:"modalIn 0.35s cubic-bezier(0.23,1,0.32,1) both",
     pointerEvents:"all",
     position:"relative",
-    overflow:"hidden",
+   overflowX:"hidden",
     /* glass card over video */
     background:"linear-gradient(155deg,rgba(8,5,1,0.82) 0%,rgba(16,10,2,0.88) 50%,rgba(10,6,1,0.82) 100%)",
     backdropFilter:"blur(20px)",
@@ -236,61 +248,202 @@ export default function CreateRoomModal({ onClose }: { onClose: () => void }) {
     )}
 
     {/* Your Name */}
-    <div style={{marginBottom:14}}>
-      <label style={{display:"block",fontSize:10,letterSpacing:"0.22em",textTransform:"uppercase",color:"rgba(212,168,67,0.42)",marginBottom:7}}>Your Name</label>
-      <input className="modal-input" type="text" value={playerName} onChange={e=>setPlayerName(e.target.value)} placeholder="Enter your name..." maxLength={20}/>
-    </div>
+  <div style={{
+  display:"grid",
+  gridTemplateColumns:"repeat(2, minmax(0, 1fr))",
+  gap:18,
+  marginBottom:20
+}}>
+  <div>
+    <label style={{display:"block",fontSize:10,letterSpacing:"0.22em",textTransform:"uppercase",color:"rgba(212,168,67,0.42)",marginBottom:7}}>Your Name</label>
+    <input className="modal-input" type="text" value={playerName} onChange={e=>setPlayerName(e.target.value)} placeholder="Enter your name..." maxLength={20}/>
+  </div>
 
-    {/* Room Name */}
-    <div style={{marginBottom:20}}>
-      <label style={{display:"block",fontSize:10,letterSpacing:"0.22em",textTransform:"uppercase",color:"rgba(212,168,67,0.42)",marginBottom:7}}>Room Name</label>
-      <input className="modal-input" type="text" value={roomName} onChange={e=>setRoomName(e.target.value)} placeholder="Enter room name..." maxLength={30}/>
-    </div>
+  <div>
+    <label style={{display:"block",fontSize:10,letterSpacing:"0.22em",textTransform:"uppercase",color:"rgba(212,168,67,0.42)",marginBottom:7}}>Room Name</label>
+    <input className="modal-input" type="text" value={roomName} onChange={e=>setRoomName(e.target.value)} placeholder="Enter room name..." maxLength={30}/>
+  </div>
+</div>
 
-    {/* Game Mode */}
-    <div style={{marginBottom:24}}>
-      <label style={{display:"block",fontSize:10,letterSpacing:"0.22em",textTransform:"uppercase",color:"rgba(212,168,67,0.42)",marginBottom:11}}>Game Mode</label>
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {(Object.keys(MODE_CONFIG) as GameMode[]).map((mode)=>{
-          const cfg=MODE_CONFIG[mode];
-          const selected=selectedMode===mode;
-          return(
-            <button key={mode} className={`mode-btn ${selected?"selected":""}`} onClick={()=>setSelectedMode(mode)}>
-              <div style={{display:"flex",alignItems:"center",gap:12}}>
-                {/* Icon wrapper — only icon animates */}
-                <div style={{flexShrink:0,perspective:"200px",width:58,height:42,display:"flex",alignItems:"center",justifyContent:"center"}}>
+ {/* Game Mode */}
+<div style={{marginBottom:0}}>
+  <label style={{
+    display:"block",
+    fontSize:10,
+    letterSpacing:"0.22em",
+    textTransform:"uppercase",
+    color:"rgba(212,168,67,0.42)",
+    marginBottom:12
+  }}>
+    Game Mode
+  </label>
+
+  <div style={{
+    display:"grid",
+    gridTemplateColumns:"repeat(3, minmax(0, 1fr))",
+    gap:18
+  }}>
+    {[
+      {
+        icon:"⚔️",
+        title:"Classic Boards",
+        subtitle:"2 Players",
+        modes:["8x8","12x12","16x16"] as GameMode[],
+      },
+      {
+        icon:"🔺",
+        title:"Tri Boards",
+        subtitle:"3 Players",
+        modes:["tri-8x8","tri-12x12","tri-16x16"] as GameMode[],
+      },
+      {
+        icon:"✦",
+        title:"X Boards",
+        subtitle:"4 Players",
+        modes:["x-8x8","x-12x12","x-16x16"] as GameMode[],
+      },
+    ].map((group)=>(
+      <div key={group.title} style={{
+        minHeight:360,
+        padding:"18px",
+        borderRadius:24,
+        background:"linear-gradient(145deg,rgba(0,0,0,.58),rgba(18,12,3,.52))",
+        border:"1px solid rgba(212,168,67,.14)",
+        boxShadow:"0 18px 45px rgba(0,0,0,.45), inset 0 1px 0 rgba(212,168,67,.12)"
+      }}>
+        <div style={{
+          display:"flex",
+          alignItems:"center",
+          gap:12,
+          marginBottom:16,
+          paddingBottom:13,
+          borderBottom:"1px solid rgba(212,168,67,.13)"
+        }}>
+          <div style={{
+            width:42,
+            height:42,
+            borderRadius:14,
+            display:"flex",
+            alignItems:"center",
+            justifyContent:"center",
+            background:"linear-gradient(145deg,#211707,#050505)",
+            border:"1px solid rgba(212,168,67,.2)",
+            boxShadow:"inset 0 1px 0 rgba(255,255,255,.08),0 10px 22px rgba(0,0,0,.55)",
+            fontSize:22
+          }}>
+            {group.icon}
+          </div>
+
+          <div>
+            <p style={{
+              margin:0,
+              fontSize:13,
+              fontWeight:900,
+              color:"#e8c96a",
+              letterSpacing:".13em",
+              textTransform:"uppercase"
+            }}>
+              {group.title}
+            </p>
+            <p style={{
+              margin:"4px 0 0",
+              fontSize:10,
+              color:"rgba(212,168,67,.48)",
+              letterSpacing:".12em",
+              textTransform:"uppercase"
+            }}>
+              {group.subtitle}
+            </p>
+          </div>
+        </div>
+
+        <div style={{display:"grid",gap:12}}>
+          {group.modes.map((mode)=>{
+            const cfg = MODE_CONFIG[mode];
+            if (!cfg) return null;
+
+            const selected = selectedMode === mode;
+
+            return(
+              <button
+                key={mode}
+                className={`mode-btn ${selected?"selected":""}`}
+                onClick={()=>setSelectedMode(mode)}
+                style={{
+                  minHeight:78,
+                  borderRadius:18,
+                  padding:"12px 14px",
+                  background:selected
+                    ? "linear-gradient(145deg,rgba(212,168,67,.18),rgba(0,0,0,.55))"
+                    : "linear-gradient(145deg,rgba(0,0,0,.45),rgba(255,255,255,.025))",
+                  border:`1px solid ${selected?"rgba(212,168,67,.55)":"rgba(212,168,67,.14)"}`,
+                  boxShadow:selected
+                    ? "0 0 24px rgba(212,168,67,.18), inset 0 1px 0 rgba(255,255,255,.10)"
+                    : "0 8px 18px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04)"
+                }}
+              >
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
                   <img
                     src={MODE_ICONS[mode]}
                     alt={mode}
                     className="mode-icon"
                     style={{
-                      width:59,height:48,objectFit:"contain",
-                      filter:"brightness(1.3) saturate(1.6) contrast(1.2)",
-                      display:"block",
-                      transformStyle:"preserve-3d",
+                      width:44,
+                      height:44,
+                      objectFit:"contain",
+                      filter:"brightness(1.35) saturate(1.5) contrast(1.15)",
+                      flexShrink:0
                     }}
                   />
+
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{
+                      fontSize:14,
+                      fontFamily:"Georgia,serif",
+                      color:selected?"#f5d36f":"rgba(232,201,106,.82)",
+                      fontWeight:800,
+                      whiteSpace:"nowrap",
+                      overflow:"hidden",
+                      textOverflow:"ellipsis"
+                    }}>
+                      {cfg.label}
+                    </div>
+
+                    <div style={{
+                      fontSize:10,
+                      color:"rgba(220,180,100,.58)",
+                      marginTop:4,
+                      lineHeight:1.35
+                    }}>
+                      {cfg.description}
+                    </div>
+                  </div>
+
+                  <span style={{
+                    fontSize:9,
+                    padding:"4px 8px",
+                    borderRadius:8,
+                    fontWeight:800,
+                    letterSpacing:"0.08em",
+                    flexShrink:0,
+                    background:selected?"rgba(212,168,67,0.22)":"rgba(0,0,0,0.35)",
+                    color:selected?"#f5d36f":"rgba(180,120,50,0.45)",
+                    border:`1px solid ${selected?"rgba(212,168,67,0.45)":"rgba(212,168,67,0.10)"}`,
+                  }}>
+                    {mode}
+                  </span>
                 </div>
-                {/* Text — never animates */}
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:13,fontFamily:"Georgia,serif",color:selected?"#d4a843":"rgba(212,168,67,0.7)",fontWeight:600,transition:"color .2s",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{cfg.label}</div>
-                  <div style={{fontSize:11,color:"rgba(200,160,80,0.55)",marginTop:3,lineHeight:1.4}}>{cfg.description}</div>
-                </div>
-                {/* Badge */}
-                <span style={{
-                  fontSize:9,padding:"3px 9px",borderRadius:6,fontWeight:700,letterSpacing:"0.1em",
-                  flexShrink:0,transition:"all .2s",
-                  background:selected?"rgba(212,168,67,0.2)":"rgba(0,0,0,0.3)",
-                  color:selected?"#d4a843":"rgba(180,120,50,0.4)",
-                  border:`1px solid ${selected?"rgba(212,168,67,0.35)":"rgba(212,168,67,0.08)"}`,
-                  boxShadow:selected?"0 0 10px rgba(212,168,67,0.2)":"none",
-                }}>{mode}</span>
-              </div>
-            </button>
-          );
-        })}
+              </button>
+            );
+          })}
+        </div>
       </div>
-    </div>
+    ))}
+  </div>
+</div>
+
+
+
 
     {/* Submit */}
     <button
