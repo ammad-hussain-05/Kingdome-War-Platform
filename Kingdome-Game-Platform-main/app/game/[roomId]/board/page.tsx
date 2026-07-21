@@ -16,6 +16,7 @@ import TriBoard8x8 from "@/components/game/tri/tri-board8x8";
 import TriBoard12x12 from "@/components/game/tri/tri-board12x12";
 import TriBoard16x16 from "@/components/game/tri/tri-board16x16";
 import { Footer } from "@/components/footer";
+import { DisclaimerFeedback } from "@/components/disclaimer-feedback";
 type TriPlayerColor8 = "white" | "black" | "grey";
 
 // const Board16x16 = dynamic(() => import("@/components/game/board-16x16"), { ssr: false });          
@@ -234,6 +235,7 @@ export default function BoardPage() {
   return (
     <>
       {content}
+      <DisclaimerFeedback />
       <Footer />
     </>
   );

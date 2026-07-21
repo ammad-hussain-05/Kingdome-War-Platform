@@ -141,70 +141,24 @@ export default function CreateRoomModal({ onClose }: { onClose: () => void }) {
   .create-submit:disabled { cursor: not-allowed; }
 `}</style>
 
-{/* ── VIDEO BACKDROP ── */}
+{/* ── FULL-SCREEN MODAL ── */}
 <div
-  onClick={onClose}
   style={{
     position:"fixed", inset:0, zIndex:50,
+    display:"flex", flexDirection:"column",
     animation:"backdropIn 0.2s ease both",
-    overflow:"hidden",
-  }}
->
-  {/* <video
-    autoPlay muted loop playsInline
-    onCanPlay={e => { (e.currentTarget as HTMLVideoElement).style.opacity = "1"; }}
-    style={{
-      position:"absolute", inset:0,
-      width:"100%", height:"100%",
-      objectFit:"cover",
-      objectPosition:"center",
-      filter:"brightness(1.18) saturate(1.2)",
-      opacity:"0",                          // ← pehle hidden
-      transition:"opacity 0.4s ease",   
-      animation:"modalIn 0.4s cubic-bezier(0.23,1,0.32,1) 0.15s both",    // ← smooth appear
-    }}
-  >
-    <source src="https://www.pexels.com/download/video/35062463/" type="video/mp4"/>
-  </video> */}
-
-  <div style={{
-    position:"absolute", inset:0,
-    background:"linear-gradient(to bottom,rgba(0,0,0,0.45) 0%,rgba(0,0,0,0.6) 100%)",
-    backdropFilter:"blur(2px)",
-  }}/>
-</div>
-
-
-
-{/* ── MODAL ── */}
-<div style={{
-  position:"fixed", inset:0, zIndex:51,
-  display:"flex", alignItems:"center", justifyContent:"center",
-  padding:"16px", pointerEvents:"none",
-}}>
-  <div style={{
-width:"96vw",
-maxWidth:1180,
-maxHeight:"92vh",
-overflowY:"hidden",
-    borderRadius:26,
-    padding:"clamp(24px,5vw,38px)",
-    animation:"modalIn 0.35s cubic-bezier(0.23,1,0.32,1) both",
-    pointerEvents:"all",
-    position:"relative",
-   overflowX:"hidden",
-    /* glass card over video */
-    background:"linear-gradient(155deg,rgba(8,5,1,0.82) 0%,rgba(16,10,2,0.88) 50%,rgba(10,6,1,0.82) 100%)",
+    background:"linear-gradient(155deg,rgba(8,5,1,0.97) 0%,rgba(16,10,2,0.98) 50%,rgba(10,6,1,0.97) 100%)",
     backdropFilter:"blur(20px)",
     WebkitBackdropFilter:"blur(20px)",
-    border:"1px solid rgba(212,168,67,0.22)",
-    boxShadow:[
-      "0 0 0 1px rgba(212,168,67,0.06)",
-      "0 0 40px rgba(212,168,67,0.1)",
-      "0 40px 80px rgba(0,0,0,0.8)",
-      "inset 0 1px 0 rgba(212,168,67,0.15)",
-      "inset 0 -1px 0 rgba(0,0,0,0.4)",
-    ].join(","),
+  }}
+>
+  <div style={{
+    position:"relative",
+    flex:1,
+    display:"flex",
+    flexDirection:"column",
+    minHeight:0,
+    animation:"modalIn 0.35s cubic-bezier(0.23,1,0.32,1) both",
   }}>
 
     {/* Top glow line */}
@@ -212,33 +166,41 @@ overflowY:"hidden",
     <div style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:150,height:30,background:"radial-gradient(ellipse,rgba(212,168,67,0.12),transparent 70%)",pointerEvents:"none"}}/>
 
     {/* Corner diamonds */}
-    {[{top:11,left:11},{top:11,right:11},{bottom:11,left:11},{bottom:11,right:11}].map((pos,i)=>(
+    {[{top:14,left:14},{top:14,right:14},{bottom:14,left:14},{bottom:14,right:14}].map((pos,i)=>(
       <div key={i} style={{position:"absolute",...pos as any,width:9,height:9,border:"1px solid rgba(212,168,67,0.3)",transform:"rotate(45deg)",pointerEvents:"none"}}/>
     ))}
 
-    {/* Close */}
+    {/* Close — top-left, so it never collides with a mobile hamburger menu
+        that typically sits top-right */}
     <button
       onClick={onClose}
-      style={{position:"absolute",top:14,right:14,width:34,height:34,borderRadius:10,background:"rgba(0,0,0,0.4)",border:"1px solid rgba(212,168,67,0.12)",color:"rgba(212,168,67,0.55)",fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all .2s",backdropFilter:"blur(4px)"}}
+      aria-label="Close"
+      style={{position:"absolute",top:"clamp(14px,3vw,22px)",left:"clamp(14px,3vw,22px)",zIndex:2,width:40,height:40,borderRadius:11,background:"rgba(0,0,0,0.4)",border:"1px solid rgba(212,168,67,0.16)",color:"rgba(212,168,67,0.6)",fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all .2s",backdropFilter:"blur(4px)"}}
       onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,80,80,0.15)";e.currentTarget.style.borderColor="rgba(255,80,80,0.3)";e.currentTarget.style.color="#ff8080";}}
-      onMouseLeave={e=>{e.currentTarget.style.background="rgba(0,0,0,0.4)";e.currentTarget.style.borderColor="rgba(212,168,67,0.12)";e.currentTarget.style.color="rgba(212,168,67,0.55)";}}
+      onMouseLeave={e=>{e.currentTarget.style.background="rgba(0,0,0,0.4)";e.currentTarget.style.borderColor="rgba(212,168,67,0.16)";e.currentTarget.style.color="rgba(212,168,67,0.6)";}}
     >×</button>
 
-    {/* Header */}
-    <div style={{marginBottom:22}}>
-      <p style={{fontSize:10,letterSpacing:"0.28em",textTransform:"uppercase",color:"rgba(212,168,67,0.45)",margin:"0 0 5px"}}>New Battle</p>
-      <h2 style={{
-        fontSize:"clamp(20px,4vw,25px)",fontFamily:"Georgia,serif",
-        margin:0,fontWeight:700,letterSpacing:".04em",
-        background:"linear-gradient(135deg,#e8c96a,#f5e09a 45%,#c8a030 85%)",
-        backgroundSize:"200% auto",
-        WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",
-        animation:"shimmerGold 3s linear infinite",
-      }}>⚔️ Create Room</h2>
+    {/* Header (fixed, never scrolls) — left padding leaves clear room for
+        the close button so the title never sits under it */}
+    <div style={{flexShrink:0,paddingTop:"clamp(24px,5vw,44px)",paddingRight:"clamp(20px,5vw,56px)",paddingBottom:0,paddingLeft:"clamp(68px,11vw,96px)"}}>
+      <div style={{maxWidth:1100,margin:"0 auto",width:"100%"}}>
+        <p style={{fontSize:10,letterSpacing:"0.28em",textTransform:"uppercase",color:"rgba(212,168,67,0.45)",margin:"0 0 5px"}}>New Battle</p>
+        <h2 style={{
+          fontSize:"clamp(22px,4vw,30px)",fontFamily:"Georgia,serif",
+          margin:0,fontWeight:700,letterSpacing:".04em",
+          background:"linear-gradient(135deg,#e8c96a,#f5e09a 45%,#c8a030 85%)",
+          backgroundSize:"200% auto",
+          WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",
+          animation:"shimmerGold 3s linear infinite",
+        }}>⚔️ Create Room</h2>
+        <div style={{height:1,background:"linear-gradient(90deg,transparent,rgba(212,168,67,0.22),transparent)",margin:"18px 0 0"}}/>
+      </div>
     </div>
 
-    {/* Divider */}
-    <div style={{height:1,background:"linear-gradient(90deg,transparent,rgba(212,168,67,0.22),transparent)",marginBottom:20}}/>
+    {/* Scrollable content — everything between header and footer can scroll,
+        so nothing is ever clipped no matter how tall it gets on a given screen */}
+    <div style={{flex:1,minHeight:0,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"20px clamp(20px,5vw,56px)"}}>
+      <div style={{maxWidth:1100,margin:"0 auto",width:"100%"}}>
 
     {/* Error */}
     {error&&(
@@ -247,12 +209,12 @@ overflowY:"hidden",
       </div>
     )}
 
-    {/* Your Name */}
+    {/* Your Name / Room Name — reflows to 1 column on narrow screens */}
   <div style={{
   display:"grid",
-  gridTemplateColumns:"repeat(2, minmax(0, 1fr))",
-  gap:18,
-  marginBottom:20
+  gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))",
+  gap:22,
+  marginBottom:28
 }}>
   <div>
     <label style={{display:"block",fontSize:10,letterSpacing:"0.22em",textTransform:"uppercase",color:"rgba(212,168,67,0.42)",marginBottom:7}}>Your Name</label>
@@ -266,7 +228,7 @@ overflowY:"hidden",
 </div>
 
  {/* Game Mode */}
-<div style={{marginBottom:0}}>
+<div style={{marginBottom:8}}>
   <label style={{
     display:"block",
     fontSize:10,
@@ -280,8 +242,8 @@ overflowY:"hidden",
 
   <div style={{
     display:"grid",
-    gridTemplateColumns:"repeat(3, minmax(0, 1fr))",
-    gap:18
+    gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))",
+    gap:24
   }}>
     {[
       {
@@ -304,8 +266,7 @@ overflowY:"hidden",
       },
     ].map((group)=>(
       <div key={group.title} style={{
-        minHeight:360,
-        padding:"18px",
+        padding:"22px",
         borderRadius:24,
         background:"linear-gradient(145deg,rgba(0,0,0,.58),rgba(18,12,3,.52))",
         border:"1px solid rgba(212,168,67,.14)",
@@ -320,8 +281,8 @@ overflowY:"hidden",
           borderBottom:"1px solid rgba(212,168,67,.13)"
         }}>
           <div style={{
-            width:42,
-            height:42,
+            width:46,
+            height:46,
             borderRadius:14,
             display:"flex",
             alignItems:"center",
@@ -357,7 +318,7 @@ overflowY:"hidden",
           </div>
         </div>
 
-        <div style={{display:"grid",gap:12}}>
+        <div style={{display:"grid",gap:14}}>
           {group.modes.map((mode)=>{
             const cfg = MODE_CONFIG[mode];
             if (!cfg) return null;
@@ -370,9 +331,9 @@ overflowY:"hidden",
                 className={`mode-btn ${selected?"selected":""}`}
                 onClick={()=>setSelectedMode(mode)}
                 style={{
-                  minHeight:78,
+                  minHeight:96,
                   borderRadius:18,
-                  padding:"12px 14px",
+                  padding:"16px 18px",
                   background:selected
                     ? "linear-gradient(145deg,rgba(212,168,67,.18),rgba(0,0,0,.55))"
                     : "linear-gradient(145deg,rgba(0,0,0,.45),rgba(255,255,255,.025))",
@@ -382,14 +343,14 @@ overflowY:"hidden",
                     : "0 8px 18px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04)"
                 }}
               >
-                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:14}}>
                   <img
                     src={MODE_ICONS[mode]}
                     alt={mode}
                     className="mode-icon"
                     style={{
-                      width:44,
-                      height:44,
+                      width:52,
+                      height:52,
                       objectFit:"contain",
                       filter:"brightness(1.35) saturate(1.5) contrast(1.15)",
                       flexShrink:0
@@ -398,7 +359,7 @@ overflowY:"hidden",
 
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{
-                      fontSize:14,
+                      fontSize:15,
                       fontFamily:"Georgia,serif",
                       color:selected?"#f5d36f":"rgba(232,201,106,.82)",
                       fontWeight:800,
@@ -410,10 +371,10 @@ overflowY:"hidden",
                     </div>
 
                     <div style={{
-                      fontSize:10,
-                      color:"rgba(220,180,100,.58)",
-                      marginTop:4,
-                      lineHeight:1.35
+                      fontSize:11,
+                      color:"rgba(220,180,100,.62)",
+                      marginTop:5,
+                      lineHeight:1.4
                     }}>
                       {cfg.description}
                     </div>
@@ -421,7 +382,7 @@ overflowY:"hidden",
 
                   <span style={{
                     fontSize:9,
-                    padding:"4px 8px",
+                    padding:"5px 9px",
                     borderRadius:8,
                     fontWeight:800,
                     letterSpacing:"0.08em",
@@ -442,23 +403,34 @@ overflowY:"hidden",
   </div>
 </div>
 
+      </div>
+    </div>
 
-
-
-    {/* Submit */}
-    <button
-      className="create-submit"
-      onClick={handleCreate}
-      disabled={!canCreate||loading}
-      style={{
-        background:canCreate&&!loading?"linear-gradient(135deg,#d4a843,#c4912a,#b8862e)":"rgba(0,0,0,0.4)",
-        color:canCreate&&!loading?"#1a0d00":"rgba(180,120,50,0.3)",
-        border:canCreate&&!loading?"none":"1px solid rgba(212,168,67,0.08)",
-        boxShadow:canCreate&&!loading?"0 8px 28px rgba(212,168,67,0.3),inset 0 1px 0 rgba(255,255,255,0.18)":"none",
-      }}
-    >
-      {loading?"Creating...":"Create Room ⚔️"}
-    </button>
+    {/* Footer (fixed, never scrolls) — submit stays reachable at all times */}
+    <div style={{
+      flexShrink:0,
+      padding:"16px clamp(20px,5vw,56px)",
+      paddingBottom:"max(16px, env(safe-area-inset-bottom))",
+      borderTop:"1px solid rgba(212,168,67,0.16)",
+      background:"rgba(0,0,0,0.32)",
+      backdropFilter:"blur(10px)",
+    }}>
+      <div style={{maxWidth:1100,margin:"0 auto",width:"100%"}}>
+        <button
+          className="create-submit"
+          onClick={handleCreate}
+          disabled={!canCreate||loading}
+          style={{
+            background:canCreate&&!loading?"linear-gradient(135deg,#d4a843,#c4912a,#b8862e)":"rgba(0,0,0,0.4)",
+            color:canCreate&&!loading?"#1a0d00":"rgba(180,120,50,0.3)",
+            border:canCreate&&!loading?"none":"1px solid rgba(212,168,67,0.08)",
+            boxShadow:canCreate&&!loading?"0 8px 28px rgba(212,168,67,0.3),inset 0 1px 0 rgba(255,255,255,0.18)":"none",
+          }}
+        >
+          {loading?"Creating...":"Create Room ⚔️"}
+        </button>
+      </div>
+    </div>
 
   </div>
 </div>

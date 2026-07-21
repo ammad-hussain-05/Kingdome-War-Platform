@@ -7,6 +7,8 @@
     applySleepSpell16, applyTeleportSpell16, applyWizardTeleport16,
     applyMageSacrifice16, applyAxeSwing16, applyWarlockBind16, applyThiefSteal16,
     getAxeSwingSquares16, rollWishDice16, cloneState16,
+    applyBindSpell16, consumeSorceressCharge16, consumeConjurerCharge16, consumeMageOnly16,
+    getThiefStealTargets16, getTricksterTeleportTargets16, applyTricksterTeleport16,
   } from "@/lib/game/rules-16x16";
   import Fireworks from "@/components/game/fireworks";
 
@@ -24,11 +26,11 @@
     "super-queen":    {name:"Super Queen",    move:"Any direction, unlimited",       special:"Double move if Sorceress alive. Full power restored by Mage sacrifice"},
     "dragon":         {name:"Dragon",         move:"Any dir unlimited + L capture",  special:"Flies over own pieces for L-attack"},
     "gargoyle":       {name:"Gargoyle",       move:"Any dir unlimited + L capture",  special:"Same as Dragon"},
-    "wizard":         {name:"Wizard",         move:"Any dir unlimited (ethereal)",   special:"Teleport any piece by touch. Only kills Wizard/Sorceress type"},
+    "wizard":         {name:"Wizard",         move:"Any dir unlimited (ethereal)",   special:"Teleport any piece by touch, or Bind Spell: freeze 1 enemy for 3 rounds"},
     "sorceress":      {name:"Sorceress",      move:"Any direction unlimited",        special:"3 spells: 😴 Sleep(3 rounds) / 🌀 Teleport / ⭐ Wish Dice"},
     "conjurer":       {name:"Conjurer",       move:"Any dir unlimited (ethereal)",   special:"Conjure 1 dead piece back. Must move first then cast"},
     "warlock":        {name:"Warlock",        move:"Any dir unlimited (ethereal)",   special:"Bind ALL enemy pieces for 1 round. Must move first"},
-    "trickster":      {name:"Trickster",      move:"Any dir unlimited (ethereal)",   special:"Steal any piece by touch ONCE. If alive 10+ moves = Game Over for owner!"},
+    "trickster":      {name:"Trickster",      move:"Any dir unlimited (ethereal), like a Queen",   special:"Teleport ONCE onto any enemy square to strike it down (its only way to capture non-ethereals). If it becomes its owner's LAST piece, the opponent has 10 rounds to kill it or the board resets"},
     "thief":          {name:"Thief",          move:"Any dir unlimited",              special:"Triple jump to steal any piece ONCE (not the King)"},
     "super-knight":   {name:"Super Knight",   move:"L-shape (double jump)",          special:"Two L-moves possible in one turn"},
     "elvin-archer":   {name:"Elvin Archer",   move:"Any dir unlimited",              special:"Also L-shape kill + 1 square any dir (sword/dagger mode)"},
@@ -623,6 +625,10 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
     const hasConj=conjSq?(gs.board[conjSq.row][conjSq.col]?.conjurerSpellsLeft||0)>0:false;
     let hasWarlock=false;
     for(let r=0;r<16;r++)for(let c=0;c<16;c++){const p=gs.board[r][c];if(p&&p.type==="warlock"&&p.color===myColor&&!p.warlockBindUsed){hasWarlock=true;break;}}
+    let hasThief=false;
+    for(let r=0;r<16;r++)for(let c=0;c<16;c++){if(getThiefStealTargets16(gs.board,r,c,myColor).length>0){hasThief=true;break;}}
+    let hasTrickster=false;
+    for(let r=0;r<16;r++)for(let c=0;c<16;c++){if(getTricksterTeleportTargets16(gs.board,r,c,myColor).length>0){hasTrickster=true;break;}}
     const findMageQueen=()=>{
       let q:Square16|null=null;
       for(let r=0;r<16;r++)for(let c=0;c<16;c++)if(gs.board[r][c]?.type==="super-queen"&&gs.board[r][c]?.color===myColor)q={row:r,col:c};
@@ -636,16 +642,19 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
     };
     const mNQ=findMageQueen();
     const deadPieces=gs.capturedBy[myColor].filter(p=>p.type!=="mystic-king");
-    if(!hasSorc&&!hasWiz&&!hasConj&&!hasWarlock&&!mNQ&&!gs.spellMessage)return null;
+    if(!hasSorc&&!hasWiz&&!hasConj&&!hasWarlock&&!hasThief&&!hasTrickster&&!mNQ&&!gs.spellMessage)return null;
 
     const spells=[
-      hasSorc&&{id:"spell-sleep",icon:"😴",label:`Sleep`,sub:`${spL} left`,color:"#9b7fff",bg:"rgba(100,60,255,.15)",border:"rgba(120,80,255,.4)"},
-      hasSorc&&{id:"spell-teleport",icon:"🌀",label:"Teleport",sub:"any piece",color:"#d080ff",bg:"rgba(180,60,220,.15)",border:"rgba(180,60,220,.4)"},
+      hasSorc&&{id:"spell-sleep",icon:"😴",label:`Sleep`,sub:`${spL} left · dice`,color:"#9b7fff",bg:"rgba(100,60,255,.15)",border:"rgba(120,80,255,.4)"},
+      hasSorc&&{id:"spell-teleport",icon:"🌀",label:"Teleport",sub:"any piece · dice",color:"#d080ff",bg:"rgba(180,60,220,.15)",border:"rgba(180,60,220,.4)"},
       hasSorc&&{id:"spell-wish",icon:"⭐",label:"Wish",sub:"dice roll",color:"#f0c040",bg:"rgba(200,160,20,.15)",border:"rgba(200,160,20,.4)"},
-      hasWiz&&{id:"wizard-teleport",icon:"🧙",label:"Wizard",sub:"teleport",color:"#60c8ff",bg:"rgba(40,140,220,.15)",border:"rgba(40,140,220,.4)"},
-      (hasConj&&deadPieces.length>0)&&{id:"conjurer-revive",icon:"✨",label:"Conjure",sub:"revive",color:"#80ffb0",bg:"rgba(60,200,100,.15)",border:"rgba(60,200,100,.4)"},
+      hasWiz&&{id:"wizard-teleport",icon:"🧙",label:"Wizard",sub:"teleport · dice",color:"#60c8ff",bg:"rgba(40,140,220,.15)",border:"rgba(40,140,220,.4)"},
+      hasWiz&&{id:"wizard-bind",icon:"❄️",label:"Bind Spell",sub:"1 enemy · dice",color:"#7fd0ff",bg:"rgba(40,140,220,.15)",border:"rgba(40,140,220,.4)"},
+      (hasConj&&deadPieces.length>0)&&{id:"conjurer-revive",icon:"✨",label:"Conjure",sub:"revive · dice",color:"#80ffb0",bg:"rgba(60,200,100,.15)",border:"rgba(60,200,100,.4)"},
       hasWarlock&&{id:"warlock-bind",icon:"⛓️",label:"Bind",sub:"all enemies",color:"#a080ff",bg:"rgba(100,60,200,.15)",border:"rgba(100,60,200,.4)"},
-      mNQ&&{id:"mage-sacrifice",icon:"💫",label:"Mage",sub:"sacrifice",color:"#ff9090",bg:"rgba(200,60,60,.15)",border:"rgba(200,60,60,.4)"},
+      hasThief&&{id:"thief-steal",icon:"🗝️",label:"Steal",sub:"triple jump",color:"#e0c080",bg:"rgba(160,120,20,.15)",border:"rgba(160,120,20,.4)"},
+      hasTrickster&&{id:"trickster-teleport",icon:"🃏",label:"Teleport",sub:"strike a target",color:"#ff90d0",bg:"rgba(200,40,140,.15)",border:"rgba(200,40,140,.4)"},
+      mNQ&&{id:"mage-sacrifice",icon:"💫",label:"Mage",sub:"sacrifice · dice",color:"#ff9090",bg:"rgba(200,60,60,.15)",border:"rgba(200,60,60,.4)"},
     ].filter(Boolean) as {id:string;icon:string;label:string;sub:string;color:string;bg:string;border:string}[];
 
     return(
@@ -658,13 +667,24 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
         )}
 
         {/* Wish dice result */}
-        {gs.wishDiceResult!==null&&(
+        {gs.wishDiceResult!==null&&gs.specialMode===null&&(
           <div style={{padding:"14px 20px",borderRadius:16,background:gs.wishDiceResult>5?"rgba(80,180,80,.1)":"rgba(200,60,60,.1)",border:`1px solid ${gs.wishDiceResult>5?"rgba(80,200,80,.3)":"rgba(200,60,60,.3)"}`,textAlign:"center",marginBottom:8,backdropFilter:"blur(16px)"}}>
             <p style={{margin:"0 0 4px",fontSize:32,fontWeight:900,color:gs.wishDiceResult>5?"#7dbd6e":"#ff8080",fontFamily:"'Cinzel',Georgia,serif"}}>🎲 {gs.wishDiceResult}<span style={{fontSize:16,opacity:.6}}>/10</span></p>
             <p style={{margin:"0 0 12px",fontSize:12,color:gs.wishDiceResult>5?"#7dbd6e":"#ff8080"}}>{gs.wishDiceResult>5?"✅ Wish Granted! Choose your move":"❌ Wish Failed — Turn Lost"}</p>
             {gs.wishDiceResult>5
               ?<button onClick={()=>onAction("wish-success")} style={{padding:"9px 24px",borderRadius:10,background:"rgba(80,200,80,.2)",border:"1px solid rgba(80,200,80,.4)",color:"#7dbd6e",fontSize:11,cursor:"pointer",fontWeight:700,fontFamily:"'Cinzel',Georgia,serif"}}>Claim Wish →</button>
               :<button onClick={()=>onAction("wish-fail")} style={{padding:"9px 24px",borderRadius:10,background:"rgba(200,60,60,.1)",border:"1px solid rgba(200,60,60,.3)",color:"#ff8080",fontSize:11,cursor:"pointer",fontWeight:700,fontFamily:"'Cinzel',Georgia,serif"}}>End Turn</button>}
+          </div>
+        )}
+
+        {/* Generic spell-cast dice result (Sleep / Teleport / Wizard Teleport / Bind / Mage Sacrifice / Conjure) */}
+        {gs.wishDiceResult!==null&&gs.specialMode!==null&&(
+          <div style={{padding:"14px 20px",borderRadius:16,background:gs.wishDiceResult>5?"rgba(80,180,80,.1)":"rgba(200,60,60,.1)",border:`1px solid ${gs.wishDiceResult>5?"rgba(80,200,80,.3)":"rgba(200,60,60,.3)"}`,textAlign:"center",marginBottom:8,backdropFilter:"blur(16px)"}}>
+            <p style={{margin:"0 0 4px",fontSize:32,fontWeight:900,color:gs.wishDiceResult>5?"#7dbd6e":"#ff8080",fontFamily:"'Cinzel',Georgia,serif"}}>🎲 {gs.wishDiceResult}<span style={{fontSize:16,opacity:.6}}>/10</span></p>
+            <p style={{margin:"0 0 12px",fontSize:12,color:gs.wishDiceResult>5?"#7dbd6e":"#ff8080"}}>{gs.wishDiceResult>5?"✅ Spell Succeeded!":"❌ Spell Failed — cost paid, turn lost"}</p>
+            {gs.wishDiceResult>5
+              ?<button onClick={()=>onAction("spell-dice-success")} style={{padding:"9px 24px",borderRadius:10,background:"rgba(80,200,80,.2)",border:"1px solid rgba(80,200,80,.4)",color:"#7dbd6e",fontSize:11,cursor:"pointer",fontWeight:700,fontFamily:"'Cinzel',Georgia,serif"}}>Confirm →</button>
+              :<button onClick={()=>onAction("spell-dice-fail")} style={{padding:"9px 24px",borderRadius:10,background:"rgba(200,60,60,.1)",border:"1px solid rgba(200,60,60,.3)",color:"#ff8080",fontSize:11,cursor:"pointer",fontWeight:700,fontFamily:"'Cinzel',Georgia,serif"}}>End Turn</button>}
           </div>
         )}
 
@@ -799,7 +819,10 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
     useEffect(()=>{
       const calc=()=>{
         const mobile=window.innerWidth<=768;setIsMobile(mobile);
-        const a=mobile?Math.min(window.innerWidth-40,400):Math.min(window.innerWidth-460,window.innerHeight-110,680);
+        // Subtracted amounts match the real chrome around the board (container
+        // padding + side panels + gaps + row-label column + frame) so it never
+        // computes wider than the space actually available.
+        const a=mobile?Math.min(window.innerWidth-90,400):Math.min(window.innerWidth-560,window.innerHeight-110,680);
         setSqSize(Math.max(Math.floor(a/16),mobile?20:28));
       };
       calc();window.addEventListener("resize",calc);return()=>window.removeEventListener("resize",calc);
@@ -849,6 +872,17 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
         setSpellEffect("wish");
       }
       else if(action==="wizard-teleport"){ns={...cloneState16(state),specialMode:"wizard-teleport-select-piece",spellMessage:"🧙 Click any piece to teleport via Wizard"};}
+      else if(action==="wizard-bind"){ns={...cloneState16(state),specialMode:"wizard-bind-select",spellMessage:"❄️ Click any enemy piece to bind it (3 rounds)"};}
+      else if(action==="thief-steal"){
+        let pieceSq:Square16|null=null;
+        for(let r=0;r<16;r++)for(let c=0;c<16;c++)if(state.board[r][c]?.type==="thief"&&state.board[r][c]?.color===myColor)pieceSq={row:r,col:c};
+        ns={...cloneState16(state),specialMode:"thief-steal-jump",specialData:{pieceSq},spellMessage:"🗝️ Click a piece within reach to steal it (not the King)"};
+      }
+      else if(action==="trickster-teleport"){
+        let pieceSq:Square16|null=null;
+        for(let r=0;r<16;r++)for(let c=0;c<16;c++)if(state.board[r][c]?.type==="trickster"&&state.board[r][c]?.color===myColor)pieceSq={row:r,col:c};
+        ns={...cloneState16(state),specialMode:"trickster-steal-jump",specialData:{pieceSq},spellMessage:"🃏 Click any enemy piece on the board to teleport in and strike it (not the King)"};
+      }
       else if(action==="conjurer-revive"){
         const dead=state.capturedBy[myColor].filter(p=>p.type!=="mystic-king");
         ns={...cloneState16(state),specialMode:"conjurer-revive-select",specialData:{deadPieces:dead},spellMessage:"✨ Select a piece to conjure back"};
@@ -857,15 +891,30 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
         ns={...cloneState16(state),specialData:{...state.specialData,selectedPiece:data.piece},spellMessage:"✨ Click an empty square to place the conjured piece"};
       }
       else if(action==="warlock-bind"){
+        // Warlock's bind-all is a distinct, separate ability from the Wizard's
+        // new Bind Spell — kept exactly as-is, no dice check (not in scope).
         ns=applyWarlockBind16(cloneState16(state),myColor);snd("bind");setSpellEffect("bind");
         ns=advanceTurn16(ns);
       }
       else if(action==="mage-sacrifice"&&data){
-        const b=applyMageSacrifice16(state.board,data.mageSq,data.queenSq);
-        ns=advanceTurn16({...cloneState16(state),board:b});setSpellEffect("conjure");
+        const roll=rollWishDice16();
+        const successBoard=applyMageSacrifice16(state.board,data.mageSq,data.queenSq);
+        const failBoard=consumeMageOnly16(state.board,data.mageSq);
+        ns={...cloneState16(state),wishDiceResult:roll,specialMode:"mage-sacrifice-pending",
+          specialData:{successBoard,failBoard,effectType:"conjure"},
+          spellMessage:roll>5?"💫 Mage Sacrifice succeeds!":"💫 Mage Sacrifice roll..."};
       }
       else if(action==="wish-success"){ns={...cloneState16(state),wishDiceResult:null,specialMode:"wizard-teleport-select-piece",spellMessage:"⭐ Wish granted! Move any piece anywhere"};}
       else if(action==="wish-fail"){ns=advanceTurn16(cloneState16(state));}
+      else if(action==="spell-dice-success"){
+        const b=state.specialData?.successBoard;
+        ns=b?advanceTurn16({...cloneState16(state),board:b}):advanceTurn16(cloneState16(state));
+        setSpellEffect(state.specialData?.effectType||null);
+      }
+      else if(action==="spell-dice-fail"){
+        const b=state.specialData?.failBoard;
+        ns=advanceTurn16({...cloneState16(state),board:b||state.board});
+      }
       else return;
       setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
       if(ns.status==="finished"&&ns.winner){setTimeout(()=>{setShowWin(ns.winner);snd("win");},400);onGameEnd?.(ns.winner!);}
@@ -881,20 +930,66 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
     const handleClick=useCallback((row:number,col:number)=>{
       const state=gsRef.current;
       if(state.status==="finished"||state.currentTurn!==myColor)return;
+      if(state.wishDiceResult!==null)return; // a dice roll is awaiting Confirm/End Turn — ignore board clicks
       const {board,selectedSquare,validMoves,specialMode}=state;
       const cp=board[row][col];const sq:Square16={row,col};
       snd("click");
 
       if(specialMode==="sorceress-sleep-select"){
-        if(cp&&cp.color!==myColor){const sSq=findSorceress16(board,myColor)!;const nb=applySleepSpell16(board,sq,sSq);const ns=advanceTurn16({...cloneState16(state),board:nb});setSpellEffect("sleep");setGs(ns);socket?.emit("game:move",{roomId,newState:ns});}return;
+        if(cp&&cp.color!==myColor){
+          const sSq=findSorceress16(board,myColor)!;
+          const successBoard=applySleepSpell16(board,sq,sSq);
+          const failBoard=consumeSorceressCharge16(board,sSq);
+          const roll=rollWishDice16();
+          const ns={...cloneState16(state),wishDiceResult:roll,specialData:{successBoard,failBoard,effectType:"sleep"},
+            spellMessage:roll>5?"😴 Sleep Spell succeeds!":"😴 Sleep Spell roll..."};
+          setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
+        }return;
       }
       if(specialMode==="sorceress-teleport-select"){
         if(!state.specialData){if(cp)setGs({...cloneState16(state),specialData:{pieceSq:sq},spellMessage:"Now click destination square."});return;}
-        if(!cp||cp.color!==myColor){const sSq=findSorceress16(board,myColor)!;const nb=applyTeleportSpell16(board,state.specialData.pieceSq,sq,sSq);const ns=advanceTurn16({...cloneState16(state),board:nb});setSpellEffect("teleport");setGs(ns);socket?.emit("game:move",{roomId,newState:ns});}return;
+        if(!cp||cp.color!==myColor){
+          const sSq=findSorceress16(board,myColor)!;
+          const successBoard=applyTeleportSpell16(board,state.specialData.pieceSq,sq,sSq);
+          const failBoard=consumeSorceressCharge16(board,sSq);
+          const roll=rollWishDice16();
+          const ns={...cloneState16(state),wishDiceResult:roll,specialData:{successBoard,failBoard,effectType:"teleport"},
+            spellMessage:roll>5?"🌀 Teleport Spell succeeds!":"🌀 Teleport Spell roll..."};
+          setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
+        }return;
       }
       if(specialMode==="wizard-teleport-select-piece"){if(cp)setGs({...cloneState16(state),specialMode:"wizard-teleport-select-dest",specialData:{pieceSq:sq},spellMessage:"Now click destination."});return;}
       if(specialMode==="wizard-teleport-select-dest"){
-        if(!cp){const nb=applyWizardTeleport16(board,state.specialData.pieceSq,sq);const ns=advanceTurn16({...cloneState16(state),board:nb});setSpellEffect("teleport");setGs(ns);socket?.emit("game:move",{roomId,newState:ns});}return;
+        if(!cp){
+          const successBoard=applyWizardTeleport16(board,state.specialData.pieceSq,sq);
+          const roll=rollWishDice16();
+          const ns={...cloneState16(state),wishDiceResult:roll,specialData:{successBoard,failBoard:board,effectType:"teleport"},
+            spellMessage:roll>5?"🧙 Wizard Teleport succeeds!":"🧙 Wizard Teleport roll..."};
+          setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
+        }return;
+      }
+      if(specialMode==="wizard-bind-select"){
+        if(cp&&cp.color!==myColor){
+          const successBoard=applyBindSpell16(board,sq);
+          const roll=rollWishDice16();
+          const ns={...cloneState16(state),wishDiceResult:roll,specialData:{successBoard,failBoard:board,effectType:"bind"},
+            spellMessage:roll>5?"❄️ Bind Spell succeeds!":"❄️ Bind Spell roll..."};
+          setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
+        }return;
+      }
+      if(specialMode==="thief-steal-jump"){
+        const pieceSq=state.specialData?.pieceSq;
+        if(pieceSq&&getThiefStealTargets16(board,pieceSq.row,pieceSq.col,myColor).some(s=>sq16Eq(s,sq))){
+          const ns=applyThiefSteal16(state,pieceSq,sq);snd("steal");setSpellEffect("steal");
+          setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
+        }return;
+      }
+      if(specialMode==="trickster-steal-jump"){
+        const pieceSq=state.specialData?.pieceSq;
+        if(pieceSq&&getTricksterTeleportTargets16(board,pieceSq.row,pieceSq.col,myColor).some(s=>sq16Eq(s,sq))){
+          const ns=applyTricksterTeleport16(state,pieceSq,sq);snd("steal");setSpellEffect("steal");
+          setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
+        }return;
       }
       if(specialMode==="conjurer-revive-select"&&state.specialData?.selectedPiece){
         if(!cp){
@@ -903,8 +998,11 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
           nb[sq.row][sq.col]={...state.specialData.selectedPiece,id:`revived-${Date.now()}`};
           const conjurer=nb[conjSq.row][conjSq.col];
           if(conjurer)nb[conjSq.row][conjSq.col]={...conjurer,conjurerSpellsLeft:conjurer.conjurerSpellsLeft-1};
-          const ns=advanceTurn16({...cloneState16(state),board:nb});
-          setSpellEffect("conjure");setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
+          const failBoard=consumeConjurerCharge16(board,conjSq);
+          const roll=rollWishDice16();
+          const ns={...cloneState16(state),wishDiceResult:roll,specialData:{successBoard:nb,failBoard,effectType:"conjure"},
+            spellMessage:roll>5?"✨ Conjure succeeds!":"✨ Conjure roll..."};
+          setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
         }return;
       }
       if(specialMode==="executioner-axe-swing"){
@@ -1189,6 +1287,9 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
                     const isGreat=!!greatSq&&sq16Eq(greatSq,sq);
                     const isRisky=!!riskySq&&sq16Eq(riskySq,sq);
                     const isAxeT=gs.specialMode==="executioner-axe-swing"&&gs.pendingAxeSquare&&getAxeSwingSquares16(gs.board,gs.pendingAxeSquare.row,gs.pendingAxeSquare.col,myColor).some(s=>sq16Eq(s,sq));
+                    const isThiefT=gs.specialMode==="thief-steal-jump"&&gs.specialData?.pieceSq&&getThiefStealTargets16(gs.board,gs.specialData.pieceSq.row,gs.specialData.pieceSq.col,myColor).some(s=>sq16Eq(s,sq));
+                    const isTricksterT=gs.specialMode==="trickster-steal-jump"&&gs.specialData?.pieceSq&&getTricksterTeleportTargets16(gs.board,gs.specialData.pieceSq.row,gs.specialData.pieceSq.col,myColor).some(s=>sq16Eq(s,sq));
+                    const isBindT=gs.specialMode==="wizard-bind-select"&&piece&&piece.color!==myColor;
                     const baseBg=isLight?"#cdb088":"#553618";
                     let ov="";
                     if(isSel)ov="rgba(212,168,67,.55)";
@@ -1197,6 +1298,8 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
                     else if(isRisky)ov="rgba(255,60,60,.22)";
                     else if(isLF||isLT)ov="rgba(212,168,67,.2)";
                     else if(isAxeT)ov="rgba(255,80,0,.45)";
+                    else if(isThiefT||isTricksterT)ov="rgba(200,40,140,.4)";
+                    else if(isBindT)ov="rgba(80,180,255,.4)";
                     return(
                       <div key={`${row}-${col}`} className="sq16" onClick={()=>handleClick(row,col)} style={{width:sqSize,height:sqSize,background:baseBg}}>
                         <div style={{position:"absolute",inset:0,zIndex:0,pointerEvents:"none",background:isLight?"linear-gradient(135deg,rgba(255,255,255,.1) 0%,transparent 55%)":"linear-gradient(135deg,rgba(255,255,255,.04) 0%,rgba(0,0,0,.2) 100%)"}}/>
@@ -1206,6 +1309,8 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
                         {isValid&&!piece&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:sqSize*.28,height:sqSize*.28,borderRadius:"50%",background:"rgba(212,168,67,.68)",boxShadow:"0 0 12px rgba(212,168,67,.5)",animation:"dotPop .14s ease both",pointerEvents:"none",zIndex:4}}/>}
                         {isValid&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"2px solid rgba(212,168,67,.82)",borderRadius:3,pointerEvents:"none"}}/>}
                         {isAxeT&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"2px solid rgba(255,80,0,.85)",borderRadius:3,pointerEvents:"none"}}/>}
+                        {(isThiefT||isTricksterT)&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"2px solid rgba(200,40,140,.9)",borderRadius:3,pointerEvents:"none"}}/>}
+                        {isBindT&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"2px solid rgba(80,180,255,.9)",borderRadius:3,pointerEvents:"none"}}/>}
                         {piece&&<PieceImg piece={piece} sqSize={sqSize} isAnim={isAnim} isGreat={isGreat} isRisky={isRisky}/>}
                       </div>
                     );
@@ -1375,11 +1480,12 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
           ["👑","Victory","Killing the Mystic King does NOT end the game. Win by eliminating ALL enemy pieces OR forcing surrender."],
           ["⚗️","Ethereal Pieces","Tricksters, Wizards, Sorceresses, Conjurers & Warlocks are ethereal — they cannot kill humans. They belong to a different realm. Only ethereals can kill other ethereals."],
           ["🗝️","Thief","Triple jumps ONCE to steal any piece (not the King). The stolen piece disappears — fight your way out."],
-          ["🃏","Trickster","Teleports by touch. Steals pieces ONCE. WARNING: If Trickster survives 10+ moves without being killed — the Trickster's owner LOSES immediately. Kill it first!"],
+          ["🃏","Trickster","Moves like a Queen. Its only way to strike a non-ethereal piece: teleport ONCE onto any enemy square, anywhere on the board. WARNING: once Trickster is its owner's LAST piece, the opponent has 10 rounds to kill it — fail and the whole board resets to the start!"],
           ["✨","Conjurer","Must move first, then conjures 1 dead allied piece back to any empty square. One use only."],
           ["⛓️","Warlock","Must move first, then binds ALL enemy pieces for 1 full round — they cannot move. One use only."],
           ["🔮","Sorceress Spells","3 spells total: 😴 Sleep any piece for 3 rounds / 🌀 Teleport any piece anywhere / ⭐ Wish (dice roll — above 5 succeeds, below 5 loses turn)."],
-          ["🧙","Wizard","Ethereal. Teleports any piece by touch. Sacrifices himself to let the King morph into any character."],
+          ["🧙","Wizard","Ethereal. Teleports any piece by touch, or casts Bind Spell to freeze 1 enemy piece for 3 rounds (dice roll — above 5 succeeds). Sacrifices himself to let the King morph into any character."],
+          ["🎲","Spell Dice","Sleep, Teleport, Bind, Mage Sacrifice & Conjure all require a d10 roll above 5 to succeed. On a failed roll the spell's cost is still paid but nothing happens — your turn ends."],
           ["🏳️","Forfeit","If any player quits — opponent is immediately declared winner. No exceptions."],
           ["🤝","Pass Turn","Mexican Standoff — you may pass your turn once per match."],
         ].map(([icon,title,desc])=>(

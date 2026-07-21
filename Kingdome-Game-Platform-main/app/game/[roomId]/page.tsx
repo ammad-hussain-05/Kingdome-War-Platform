@@ -7,6 +7,7 @@ import { createSocket } from "@/lib/lobby/socket-client";
 import { Room } from "@/lib/lobby/types";
 import { getModeFromRoomId } from "@/lib/lobby/id-generator";
 import { Footer } from "@/components/footer";
+import { DisclaimerFeedback } from "@/components/disclaimer-feedback";
 
 const MODES = [
   {
@@ -548,6 +549,7 @@ export default function GamePage() {
         </div>
       </div>
 
+      <DisclaimerFeedback />
       <Footer />
     </>
   );

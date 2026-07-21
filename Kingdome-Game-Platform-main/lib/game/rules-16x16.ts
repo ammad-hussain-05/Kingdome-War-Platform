@@ -52,15 +52,19 @@ export type SpecialMode16 =
   | "super-queen-second-move"
   | "conjurer-revive-select"
   | "warlock-bind-active"
+  | "wizard-bind-select"
   | "thief-steal-jump"
-  | "trickster-steal-jump";
+  | "trickster-steal-jump"
+  | "mage-sacrifice-pending";
 
 export interface GameState16 {
   board: Board16;
   currentTurn: PlayerColor16;
   turnOrder: PlayerColor16[];
   eliminatedPlayers: PlayerColor16[];
-  capturedBy: Record<"white" | "black", Piece16[]>;
+  // Keyed by PlayerColor16 rather than a literal "white"|"black" so a future
+  // 3rd/4th player color slots into this record without further changes here.
+  capturedBy: Record<PlayerColor16, Piece16[]>;
   selectedSquare: Square16 | null;
   validMoves: Square16[];
   status: "playing" | "finished";
@@ -519,14 +523,16 @@ export function applyConjurerRevive16(b: Board16, piece: Piece16, dSq: Square16,
   return nb;
 }
 
-// Warlock binds all enemy pieces for 1 round
+// Warlock binds every OTHER active player's pieces for 1 round (not just a
+// single hardcoded opposite color, so this keeps working if turnOrder ever
+// has 3-4 active players instead of exactly 2).
 export function applyWarlockBind16(state: GameState16, warlockColor: PlayerColor16): GameState16 {
   const ns = cloneState16(state);
-  const enemy = warlockColor === "white" ? "black" : "white";
+  const enemies = ns.turnOrder.filter(c => c !== warlockColor);
   // Mark all enemy pieces as bound
   for (let r = 0; r < 16; r++) for (let c = 0; c < 16; c++) {
     const p = ns.board[r][c];
-    if (p && p.color === enemy) ns.board[r][c] = { ...p, boundRoundsLeft: 1 };
+    if (p && enemies.includes(p.color)) ns.board[r][c] = { ...p, boundRoundsLeft: 1 };
   }
   // Mark warlock as used
   for (let r = 0; r < 16; r++) for (let c = 0; c < 16; c++) {
@@ -534,8 +540,10 @@ export function applyWarlockBind16(state: GameState16, warlockColor: PlayerColor
     if (p && p.type === "warlock" && p.color === warlockColor)
       ns.board[r][c] = { ...p, warlockBindUsed: true };
   }
-  if (!ns.boundPlayers.includes(enemy)) ns.boundPlayers.push(enemy);
-  ns.spellMessage = `⛓️ Warlock bound ALL ${enemy} pieces for 1 round!`;
+  for (const enemy of enemies) if (!ns.boundPlayers.includes(enemy)) ns.boundPlayers.push(enemy);
+  ns.spellMessage = enemies.length > 1
+    ? `⛓️ Warlock bound ALL enemy pieces for 1 round!`
+    : `⛓️ Warlock bound ALL ${enemies[0]} pieces for 1 round!`;
   return ns;
 }
 
@@ -575,45 +583,66 @@ export function checkAllEliminated16(board: Board16, color: PlayerColor16): bool
   return true; // no pieces left = eliminated
 }
 
-function checkWinner16(board: Board16, turnOrder: PlayerColor16[]): PlayerColor16 | null {
-  for (const color of turnOrder) {
-    if (checkAllEliminated16(board, color)) {
-      // This player has no pieces — opponent wins
-      return turnOrder.find(c => c !== color) || null;
-    }
+// Recomputes who still has pieces on the board, updates turnOrder/
+// eliminatedPlayers/justEliminated accordingly, and declares a winner only
+// once exactly one player remains — correct for 2 players today and for any
+// future 3-4 player expansion (never assumes "the other" player automatically
+// wins just because one player was eliminated).
+function applyEliminationCheck16(ns: GameState16): GameState16 {
+  const remaining = ns.turnOrder.filter(c => !checkAllEliminated16(ns.board, c));
+  const newlyEliminated = ns.turnOrder.filter(c => !remaining.includes(c));
+  if (newlyEliminated.length > 0) {
+    ns.eliminatedPlayers = [...ns.eliminatedPlayers, ...newlyEliminated];
+    ns.justEliminated = newlyEliminated[0];
   }
-  return null;
+  ns.turnOrder = remaining;
+  if (remaining.length <= 1) {
+    ns.status = "finished";
+    ns.winner = remaining[0] ?? null;
+    ns.currentTurn = ns.winner ?? ns.currentTurn;
+  }
+  return ns;
 }
 
 // ─── ADVANCE TURN ─────────────────────────────────────────────────────────────
 export function advanceTurn16(state: GameState16): GameState16 {
-  const ns = cloneState16(state);
+  let ns = cloneState16(state);
   ns.specialMode = null; ns.specialData = null; ns.spellMessage = null;
   ns.pendingAxeSquare = null; ns.selectedSquare = null; ns.validMoves = [];
   ns.justEliminated = null;
 
-  // Trickster game-over check: if trickster alive > 10 moves
+  // Trickster last-stand: the countdown only runs once a player's Trickster
+  // is their ONLY remaining piece. If the opponent hasn't killed it within
+  // 10 further turns, the whole board resets to the starting position
+  // (same players/turn order) rather than anyone winning outright.
   for (const color of ns.turnOrder) {
-    const tricksterAlive = ns.turnOrder.some(c => {
-      for (let r = 0; r < 16; r++) for (let c2 = 0; c2 < 16; c2++)
-        if (ns.board[r][c2]?.type === "trickster" && ns.board[r][c2]?.color === c) return true;
-      return false;
-    });
-    if (tricksterAlive) {
+    let aliveCount = 0, onlyPieceIsTrickster = false;
+    for (let r = 0; r < 16; r++) for (let c2 = 0; c2 < 16; c2++) {
+      const p = ns.board[r][c2];
+      if (p && p.color === color) {
+        aliveCount++;
+        onlyPieceIsTrickster = p.type === "trickster";
+      }
+    }
+    const lastStand = aliveCount === 1 && onlyPieceIsTrickster;
+
+    if (lastStand) {
       const count = (ns.tricksterAliveCount[color] || 0) + 1;
       ns.tricksterAliveCount[color] = count;
       if (count > 10) {
-        // Trickster owner loses — game over
-        const loser = color;
-        const winner = ns.turnOrder.find(c => c !== loser)!;
-        ns.status = "finished"; ns.winner = winner; ns.currentTurn = winner;
-        return ns;
+        const fresh = createInitialGameState16();
+        fresh.turnOrder = [...ns.turnOrder];
+        fresh.currentTurn = ns.turnOrder[0];
+        fresh.spellMessage = `⏳ ${color}'s Trickster survived as the last piece for 10 rounds — the board has been reset!`;
+        return fresh;
       }
+    } else {
+      ns.tricksterAliveCount[color] = 0;
     }
   }
 
-  const w = checkWinner16(ns.board, ns.turnOrder);
-  if (w) { ns.status = "finished"; ns.winner = w; ns.currentTurn = w; return ns; }
+  ns = applyEliminationCheck16(ns);
+  if (ns.status === "finished") return ns;
 
   const idx = ns.turnOrder.indexOf(ns.currentTurn);
   const nextIdx = (idx + 1) % ns.turnOrder.length;
@@ -645,7 +674,7 @@ export function advanceTurn16(state: GameState16): GameState16 {
 
 // ─── EXECUTE MOVE ─────────────────────────────────────────────────────────────
 export function executeMove16(state: GameState16, from: Square16, to: Square16): GameState16 {
-  const ns = cloneState16(state);
+  let ns = cloneState16(state);
   const board = ns.board;
   const piece = board[from.row][from.col]!;
   const target = board[to.row][to.col];
@@ -691,8 +720,8 @@ export function executeMove16(state: GameState16, from: Square16, to: Square16):
   ns.selectedSquare = null; ns.validMoves = [];
   ns.specialMode = null; ns.specialData = null; ns.spellMessage = null; ns.wishDiceResult = null;
 
-  const w = checkWinner16(ns.board, ns.turnOrder);
-  if (w) { ns.status = "finished"; ns.winner = w; ns.currentTurn = w; return ns; }
+  ns = applyEliminationCheck16(ns);
+  if (ns.status === "finished") return ns;
 
   // Executioner axe swing
   if (piece.type === "executioner") {
@@ -719,22 +748,16 @@ export function executeMove16(state: GameState16, from: Square16, to: Square16):
 }
 
 export function applyAxeSwing16(state: GameState16, tSq: Square16): GameState16 {
-  const ns = cloneState16(state);
+  let ns = cloneState16(state);
   const board = ns.board;
   const t = board[tSq.row][tSq.col];
   if (!t) return advanceTurn16(ns);
   ns.capturedBy[ns.currentTurn].push(t);
-  if (t.type === "mystic-king") {
-    ns.eliminatedPlayers.push(t.color);
-    ns.justEliminated = t.color;
-    ns.turnOrder = ns.turnOrder.filter(p => p !== t.color);
-    for (let r = 0; r < 16; r++) for (let c = 0; c < 16; c++)
-      if (board[r][c]?.color === t.color) board[r][c] = null;
-    const w = checkWinner16(ns.board, ns.turnOrder);
-    if (w) { ns.status = "finished"; ns.winner = w; ns.currentTurn = w; return ns; }
-  } else {
-    board[tSq.row][tSq.col] = null;
-  }
+  // Axe swing kills whatever it hits — including a King — as a normal
+  // capture only. It does not eliminate the player by itself.
+  board[tSq.row][tSq.col] = null;
+  ns = applyEliminationCheck16(ns);
+  if (ns.status === "finished") return ns;
   return advanceTurn16(ns);
 }
 
@@ -751,4 +774,87 @@ export function applyThiefSteal16(state: GameState16, from: Square16, targetSq: 
   board[from.row][from.col] = { ...thief, thiefStealUsed: true };
   ns.spellMessage = `🗝️ Thief stole the ${target.type}!`;
   return advanceTurn16(ns);
+}
+
+// Thief's steal reaches 2-3 squares in any direction, ignoring blockers
+// (mirrors the Paladin's super-attack reach), once per game, never the king.
+export function getThiefStealTargets16(b: Board16, r: number, c: number, color: PlayerColor16): Square16[] {
+  const p = b[r][c];
+  if (!p || p.type !== "thief" || p.thiefStealUsed || p.sleepRoundsLeft > 0 || p.boundRoundsLeft > 0) return [];
+  const targets: Square16[] = [];
+  for (const [dr, dc] of ALL8_16) {
+    for (const d of [2, 3]) {
+      const rr = r + dr * d, cc = c + dc * d;
+      if (!inB16(rr, cc)) continue;
+      const t = b[rr][cc];
+      if (t && t.color !== color && t.type !== "mystic-king") targets.push({ row: rr, col: cc });
+    }
+  }
+  return targets;
+}
+
+// Trickster teleport — its only way to "hit" a target: instantly relocate
+// onto an enemy square anywhere on the board, capturing it. One-time use,
+// never the king. Ordinary movement (Queen-like slide) is unaffected.
+export function getTricksterTeleportTargets16(b: Board16, r: number, c: number, color: PlayerColor16): Square16[] {
+  const p = b[r][c];
+  if (!p || p.type !== "trickster" || p.tricksterStealUsed || p.sleepRoundsLeft > 0 || p.boundRoundsLeft > 0) return [];
+  const targets: Square16[] = [];
+  for (let rr = 0; rr < 16; rr++) for (let cc = 0; cc < 16; cc++) {
+    const t = b[rr][cc];
+    if (t && t.color !== color && t.type !== "mystic-king") targets.push({ row: rr, col: cc });
+  }
+  return targets;
+}
+
+export function applyTricksterTeleport16(state: GameState16, from: Square16, targetSq: Square16): GameState16 {
+  const ns = cloneState16(state);
+  const board = ns.board;
+  const trickster = board[from.row][from.col];
+  const target = board[targetSq.row][targetSq.col];
+  if (!trickster || !target || target.type === "mystic-king") return advanceTurn16(ns);
+  ns.capturedBy[trickster.color].push(target);
+  board[targetSq.row][targetSq.col] = { ...trickster, tricksterStealUsed: true, hasMoved: true };
+  board[from.row][from.col] = null;
+  ns.lastMove = { from, to: targetSq };
+  ns.spellMessage = `🎭 The Trickster teleported in and struck down the ${target.type}!`;
+  return advanceTurn16(ns);
+}
+
+// ─── BIND SPELL (Wizard) ─────────────────────────────────────────────────────
+// Wizard-only: freezes ONE enemy piece for 3 rounds. Distinct from Warlock's
+// bind-all-for-1-round — the two coexist as separate abilities. Unlimited
+// casts, same as the Wizard's existing teleport ability.
+export function applyBindSpell16(b: Board16, targetSq: Square16): Board16 {
+  const nb = cloneBoard16(b);
+  const t = nb[targetSq.row][targetSq.col];
+  if (!t) return nb;
+  nb[targetSq.row][targetSq.col] = { ...t, sleepRoundsLeft: 3 };
+  return nb;
+}
+
+// ─── DICE-GATED SPELL COST HELPERS ───────────────────────────────────────────
+// When a spell's d10 roll fails, the caster still pays its resource cost —
+// these apply only that cost, without the spell's positional effect.
+export function consumeSorceressCharge16(b: Board16, sSq: Square16): Board16 {
+  const nb = cloneBoard16(b);
+  const s = nb[sSq.row][sSq.col];
+  if (!s) return nb;
+  const left = s.sorceressSpellsLeft - 1;
+  nb[sSq.row][sSq.col] = left <= 0 ? null : { ...s, sorceressSpellsLeft: left };
+  return nb;
+}
+
+export function consumeConjurerCharge16(b: Board16, cSq: Square16): Board16 {
+  const nb = cloneBoard16(b);
+  const c = nb[cSq.row][cSq.col];
+  if (!c) return nb;
+  nb[cSq.row][cSq.col] = { ...c, conjurerSpellsLeft: c.conjurerSpellsLeft - 1 };
+  return nb;
+}
+
+export function consumeMageOnly16(b: Board16, mSq: Square16): Board16 {
+  const nb = cloneBoard16(b);
+  nb[mSq.row][mSq.col] = null;
+  return nb;
 }

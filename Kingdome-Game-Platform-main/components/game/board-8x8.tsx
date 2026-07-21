@@ -579,9 +579,12 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
     const mobile = window.innerWidth <= 768;
     setIsMobile(mobile);
 
+    // Subtracted amounts account for the actual layout chrome around the
+    // board (container padding + side panels + gaps + wood frame) so the
+    // board never computes wider than the space actually available to it.
     const s = mobile
-      ? Math.min(window.innerWidth - 60, window.innerHeight - 240, 380)
-      : Math.min(window.innerWidth - 520, window.innerHeight - 80, 580);
+      ? Math.min(window.innerWidth - 96, window.innerHeight - 240, 380)
+      : Math.min(window.innerWidth - 640, window.innerHeight - 80, 580);
 
     setBoardPx(Math.max(s, 300));
   };

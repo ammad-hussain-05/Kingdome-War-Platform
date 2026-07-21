@@ -3,7 +3,8 @@ export type PlayerColor = "white" | "black";
 export type PieceType12 =
   | "mystic-king" | "super-queen" | "dragon" | "gargoyle"
   | "wizard" | "sorceress" | "super-knight" | "assassin"
-  | "executioner" | "cavalier" | "mage" | "elvin-archer" | "paladin";
+  | "executioner" | "cavalier" | "mage" | "elvin-archer" | "paladin"
+  | "warlock" | "thief";
 
 export interface Piece12 {
   id: string; type: PieceType12; color: PlayerColor;
@@ -11,6 +12,12 @@ export interface Piece12 {
   sorceressSpellsLeft: number; sorceressDead: boolean; sleepRoundsLeft: number;
   isEthereal: boolean; executionerAxeUsed: boolean;
   superQueenDoubleJumpDone: boolean; mageSacrificed: boolean;
+  // Warlock
+  warlockBindUsed: boolean;
+  // Bound (from Warlock's bind-all, or the Wizard's Bind Spell)
+  boundRoundsLeft: number;
+  // Thief
+  thiefStealUsed: boolean;
 }
 
 export interface Square12 { row: number; col: number; }
@@ -19,13 +26,17 @@ export type Board12 = (Piece12 | null)[][];
 export type SpecialMode =
   | null | "wizard-teleport-select-piece" | "wizard-teleport-select-dest"
   | "sorceress-sleep-select" | "sorceress-teleport-select"
-  | "executioner-axe-swing" | "super-queen-second-move";
+  | "executioner-axe-swing" | "super-queen-second-move"
+  | "warlock-bind-active" | "wizard-bind-select" | "thief-steal-jump"
+  | "mage-sacrifice-pending";
 
 export interface GameState12 {
   board: Board12; currentTurn: PlayerColor;
   turnOrder: PlayerColor[];
   eliminatedPlayers: PlayerColor[];
-  capturedBy: Record<"white" | "black", Piece12[]>;
+  // Keyed by PlayerColor rather than a literal "white"|"black" so a future
+  // 3rd/4th player color slots into this record without further changes here.
+  capturedBy: Record<PlayerColor, Piece12[]>;
   selectedSquare: Square12 | null; validMoves: Square12[];
   status: "playing" | "finished"; winner: PlayerColor | null;
   lastMove: { from: Square12; to: Square12 } | null;
@@ -35,6 +46,8 @@ export interface GameState12 {
   pendingAxeSquare: Square12 | null; spellMessage: string | null;
   lastMoveQuality: "great" | "risky" | "normal" | null;
   justEliminated: PlayerColor | null;
+  // Warlock bind — all enemy pieces frozen
+  boundPlayers: PlayerColor[];
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
@@ -53,6 +66,7 @@ export function cloneState12(s: GameState12): GameState12 {
     capturedBy: { white: [...s.capturedBy.white], black: [...s.capturedBy.black] },
     validMoves: [...s.validMoves],
     specialData: s.specialData ? { ...s.specialData } : null,
+    boundPlayers: [...s.boundPlayers],
   };
 }
 
@@ -71,6 +85,10 @@ export function pieceImagePath(p: Piece12): string {
     "mage":         p.color === "white" ? "Sorceress White"    : "Sorceress black",
     "elvin-archer": p.color === "white" ? "Assassin White"     : "Assassin black",
     "paladin":      p.color === "white" ? "Paladin - White"    : "Paladin - Black",
+    // No dedicated 12x12 art yet for these two — reusing the closest
+    // thematic piece (dark ethereal caster / rogue) as a placeholder.
+    "warlock":      p.color === "white" ? "Sorceress White"    : "Sorceress black",
+    "thief":        p.color === "white" ? "Assassin White"     : "Assassin black",
   };
   return `/pieces-12x12/${p.color}/${nm[p.type]}.png`;
 }
@@ -79,14 +97,18 @@ function mkP(type: PieceType12, color: PlayerColor, id: string): Piece12 {
   return {
     id, type, color, hasMoved: false, paladanSuperUsed: false, superKnightJumpsLeft: 2,
     sorceressSpellsLeft: 3, sorceressDead: false, sleepRoundsLeft: 0,
-    isEthereal: type === "wizard" || type === "sorceress", executionerAxeUsed: false,
-    superQueenDoubleJumpDone: false, mageSacrificed: false
+    isEthereal: type === "wizard" || type === "sorceress" || type === "warlock",
+    executionerAxeUsed: false,
+    superQueenDoubleJumpDone: false, mageSacrificed: false,
+    warlockBindUsed: false, boundRoundsLeft: 0, thiefStealUsed: false,
   };
 }
 
+// One Assassin slot -> Thief and one Executioner slot -> Warlock, keeping the
+// row at 12 pieces and every other original piece intact.
 const BACK: PieceType12[] = [
   "executioner",
-  "assassin",
+  "thief",
   "super-knight",
   "dragon",
   "sorceress",
@@ -96,7 +118,7 @@ const BACK: PieceType12[] = [
   "gargoyle",
   "super-knight",
   "assassin",
-  "executioner"
+  "warlock"
 ];
 
 const FRONT: PieceType12[] = [
@@ -141,6 +163,7 @@ export function createInitialGameState12(): GameState12 {
     wishDiceResult: null, turnMovesLeft: 1,
     pendingAxeSquare: null, spellMessage: null,
     lastMoveQuality: null, justEliminated: null,
+    boundPlayers: [],
   };
 }
 
@@ -183,7 +206,7 @@ function dd(m: Square12[]): Square12[] {
 }
 
 export function getRawMoves12(b: Board12, r: number, c: number): Square12[] {
-  const p = b[r][c]; if (!p || p.sleepRoundsLeft > 0) return [];
+  const p = b[r][c]; if (!p || p.sleepRoundsLeft > 0 || p.boundRoundsLeft > 0) return [];
   const { type, color } = p; let m: Square12[] = [];
   switch (type) {
     case "mystic-king":  m = [...lj(b,r,c,color), ...os(b,r,c,color)]; break;
@@ -198,12 +221,25 @@ export function getRawMoves12(b: Board12, r: number, c: number): Square12[] {
         while (inB(rr, cc)) {
           const t = b[rr][cc];
           if (!t) { m.push({ row: rr, col: cc }); }
-          else { if (t.color !== color && (t.type === "wizard" || t.type === "sorceress")) m.push({ row: rr, col: cc }); break; }
+          else { if (t.color !== color && (t.type === "wizard" || t.type === "sorceress" || t.type === "warlock")) m.push({ row: rr, col: cc }); break; }
           rr += dr; cc += dc;
         }
       }
       break;
     case "sorceress":    m = slide(b,r,c,ALL8,color); break;
+    case "warlock":
+      // Ethereal — slides any dir, only kills other ethereals
+      for (const [dr, dc] of ALL8) {
+        let rr = r + dr, cc = c + dc;
+        while (inB(rr, cc)) {
+          const t = b[rr][cc];
+          if (!t) { m.push({ row: rr, col: cc }); }
+          else { if (t.color !== color && t.isEthereal) m.push({ row: rr, col: cc }); break; }
+          rr += dr; cc += dc;
+        }
+      }
+      break;
+    case "thief":         m = slide(b,r,c,ALL8,color); break;
     case "super-knight": m = lj(b,r,c,color); break;
     case "assassin":     m = [...slide(b,r,c,ALL8,color), ...lj(b,r,c,color), ...os(b,r,c,color)]; break;
     case "executioner":  m = slide(b,r,c,ST4,color); break;
@@ -262,7 +298,7 @@ function evaluateMoveQuality(
   let score = 0;
   const pieceValues: Record<PieceType12, number> = {
     "mystic-king":10, "super-queen":9, "dragon":8, "gargoyle":7, "sorceress":7,
-    "wizard":6, "assassin":6, "elvin-archer":5, "super-knight":5, "executioner":5,
+    "wizard":6, "warlock":6, "assassin":6, "thief":5, "elvin-archer":5, "super-knight":5, "executioner":5,
     "cavalier":4, "mage":4, "paladin":2,
   };
 
@@ -369,31 +405,134 @@ export function tickSleep(b: Board12, color: PlayerColor): Board12 {
       const p = nb[r][c];
       if (p && p.color === color && p.sleepRoundsLeft > 0)
         nb[r][c] = { ...p, sleepRoundsLeft: p.sleepRoundsLeft - 1 };
+      if (p && p.color === color && p.boundRoundsLeft > 0)
+        nb[r][c] = { ...nb[r][c]!, boundRoundsLeft: nb[r][c]!.boundRoundsLeft - 1 };
     }
   return nb;
 }
 
-// ─── WIN CHECK ───────────────────────────────────────────────────────────────
-function checkWinner(turnOrder: PlayerColor[]): PlayerColor | null {
-  if (turnOrder.length === 1) return turnOrder[0];
-  if (turnOrder.length === 0) return null;
-  return null;
+// Warlock binds every OTHER active player's pieces for 1 round.
+export function applyWarlockBind(state: GameState12, warlockColor: PlayerColor): GameState12 {
+  const ns = cloneState12(state);
+  const enemies = ns.turnOrder.filter(c => c !== warlockColor);
+  for (let r = 0; r < 12; r++) for (let c = 0; c < 12; c++) {
+    const p = ns.board[r][c];
+    if (p && enemies.includes(p.color)) ns.board[r][c] = { ...p, boundRoundsLeft: 1 };
+  }
+  for (let r = 0; r < 12; r++) for (let c = 0; c < 12; c++) {
+    const p = ns.board[r][c];
+    if (p && p.type === "warlock" && p.color === warlockColor)
+      ns.board[r][c] = { ...p, warlockBindUsed: true };
+  }
+  for (const enemy of enemies) if (!ns.boundPlayers.includes(enemy)) ns.boundPlayers.push(enemy);
+  ns.spellMessage = enemies.length > 1
+    ? `⛓️ Warlock bound ALL enemy pieces for 1 round!`
+    : `⛓️ Warlock bound ALL ${enemies[0]} pieces for 1 round!`;
+  return ns;
+}
+
+// Thief's steal reaches 2-3 squares in any direction, ignoring blockers
+// (mirrors the Paladin's super-attack reach), once per game, never the king.
+export function getThiefStealTargets(b: Board12, r: number, c: number, color: PlayerColor): Square12[] {
+  const p = b[r][c];
+  if (!p || p.type !== "thief" || p.thiefStealUsed || p.sleepRoundsLeft > 0 || p.boundRoundsLeft > 0) return [];
+  const targets: Square12[] = [];
+  for (const [dr, dc] of ALL8) {
+    for (const d of [2, 3]) {
+      const rr = r + dr * d, cc = c + dc * d;
+      if (!inB(rr, cc)) continue;
+      const t = b[rr][cc];
+      if (t && t.color !== color && t.type !== "mystic-king") targets.push({ row: rr, col: cc });
+    }
+  }
+  return targets;
+}
+
+export function applyThiefSteal(state: GameState12, from: Square12, targetSq: Square12): GameState12 {
+  const ns = cloneState12(state);
+  const board = ns.board;
+  const thief = board[from.row][from.col];
+  const target = board[targetSq.row][targetSq.col];
+  if (!thief || !target || target.type === "mystic-king") return ns;
+  ns.capturedBy[thief.color].push(target);
+  board[targetSq.row][targetSq.col] = null;
+  board[from.row][from.col] = { ...thief, thiefStealUsed: true };
+  ns.spellMessage = `🗝️ Thief stole the ${target.type}!`;
+  return advanceTurn(ns);
+}
+
+// ─── BIND SPELL (Wizard) ─────────────────────────────────────────────────────
+// Wizard-only: freezes ONE enemy piece for 3 rounds. Distinct from Warlock's
+// bind-all-for-1-round — the two coexist as separate abilities. Unlimited
+// casts, same as the Wizard's existing teleport ability.
+export function applyBindSpell(b: Board12, targetSq: Square12): Board12 {
+  const nb = cloneBoard12(b);
+  const t = nb[targetSq.row][targetSq.col];
+  if (!t) return nb;
+  nb[targetSq.row][targetSq.col] = { ...t, sleepRoundsLeft: 3 };
+  return nb;
+}
+
+// ─── DICE-GATED SPELL COST HELPERS ───────────────────────────────────────────
+// When a spell's d10 roll fails, the caster still pays its resource cost —
+// these apply only that cost, without the spell's positional effect.
+export function consumeSorceressCharge(b: Board12, sSq: Square12): Board12 {
+  const nb = cloneBoard12(b);
+  const s = nb[sSq.row][sSq.col];
+  if (!s) return nb;
+  const left = s.sorceressSpellsLeft - 1;
+  nb[sSq.row][sSq.col] = left <= 0 ? null : { ...s, sorceressSpellsLeft: left };
+  return nb;
+}
+
+export function consumeMageOnly(b: Board12, mSq: Square12): Board12 {
+  const nb = cloneBoard12(b);
+  nb[mSq.row][mSq.col] = null;
+  return nb;
+}
+
+// ─── WIN CHECK — ALL PIECES ELIMINATED ───────────────────────────────────────
+// A player is only eliminated once every one of their pieces (king included)
+// is gone from the board. Capturing the King is just a normal capture — it
+// carries no special elimination/end-game meaning of its own.
+function countPieces12(board: Board12, color: PlayerColor): number {
+  let n = 0;
+  for (let r = 0; r < 12; r++) for (let c = 0; c < 12; c++) if (board[r][c]?.color === color) n++;
+  return n;
+}
+
+// Recomputes who still has pieces on the board, updates turnOrder/
+// eliminatedPlayers/justEliminated accordingly, and declares a winner only
+// once exactly one player remains — correct for 2 players today and for any
+// future 3-4 player expansion (never assumes "the other" player automatically
+// wins just because one player was eliminated).
+function applyEliminationCheck12(ns: GameState12): GameState12 {
+  const remaining = ns.turnOrder.filter(c => countPieces12(ns.board, c) > 0);
+  const newlyEliminated = ns.turnOrder.filter(c => !remaining.includes(c));
+  if (newlyEliminated.length > 0) {
+    ns.eliminatedPlayers = [...ns.eliminatedPlayers, ...newlyEliminated];
+    ns.justEliminated = newlyEliminated[0];
+  }
+  ns.turnOrder = remaining;
+  if (remaining.length <= 1) {
+    ns.status = "finished";
+    ns.winner = remaining[0] ?? null;
+    ns.currentTurn = ns.winner ?? ns.currentTurn;
+  }
+  return ns;
 }
 
 // ─── ADVANCE TURN ────────────────────────────────────────────────────────────
 export function advanceTurn(state: GameState12): GameState12 {
-  const ns = cloneState12(state);
+  let ns = cloneState12(state);
   ns.specialMode = null; ns.specialData = null; ns.spellMessage = null;
   ns.pendingAxeSquare = null; ns.selectedSquare = null; ns.validMoves = [];
   ns.justEliminated = null;
 
-  const w = checkWinner(ns.turnOrder);
-  if (w) {
-    ns.status = "finished";
-    ns.winner = w;
-    ns.currentTurn = w;
-    return ns;
-  }
+  // Safety net: covers every path that ends a turn (spell casts included),
+  // not just executeMove12/applyAxeSwing which already check this themselves.
+  ns = applyEliminationCheck12(ns);
+  if (ns.status === "finished") return ns;
 
   const idx = ns.turnOrder.indexOf(ns.currentTurn);
   const nextIdx = (idx + 1) % ns.turnOrder.length;
@@ -418,7 +557,7 @@ export function advanceTurn(state: GameState12): GameState12 {
 
 // ─── EXECUTE MOVE ────────────────────────────────────────────────────────────
 export function executeMove12(state: GameState12, from: Square12, to: Square12): GameState12 {
-  const ns = cloneState12(state);
+  let ns = cloneState12(state);
   const board = ns.board;
   const piece = board[from.row][from.col]!;
   const target = board[to.row][to.col];
@@ -427,14 +566,9 @@ export function executeMove12(state: GameState12, from: Square12, to: Square12):
   if (target) {
     ns.capturedBy[piece.color].push(target);
 
-    if (target.type === "mystic-king") {
-      ns.eliminatedPlayers.push(target.color);
-      ns.justEliminated = target.color;
-      ns.turnOrder = ns.turnOrder.filter(p => p !== target.color);
-      for (let r = 0; r < 12; r++)
-        for (let c = 0; c < 12; c++)
-          if (board[r][c]?.color === target.color) board[r][c] = null;
-    }
+    // Capturing the King is a normal capture only — it does NOT eliminate
+    // the player or end the game. Elimination is decided purely by piece
+    // count, checked below via applyEliminationCheck12.
 
     if (target.type === "sorceress") {
       for (let r = 0; r < 12; r++)
@@ -461,13 +595,8 @@ export function executeMove12(state: GameState12, from: Square12, to: Square12):
   ns.selectedSquare = null; ns.validMoves = [];
   ns.specialMode = null; ns.specialData = null; ns.spellMessage = null; ns.wishDiceResult = null;
 
-  const w = checkWinner(ns.turnOrder);
-  if (w) {
-    ns.status = "finished";
-    ns.winner = w;
-    ns.currentTurn = w;
-    return ns;
-  }
+  ns = applyEliminationCheck12(ns);
+  if (ns.status === "finished") return ns;
 
   if (piece.type === "executioner") {
     const ax = getAxeSwingSquares(board, to.row, to.col, piece.color);
@@ -492,22 +621,15 @@ export function executeMove12(state: GameState12, from: Square12, to: Square12):
 }
 
 export function applyAxeSwing(state: GameState12, tSq: Square12): GameState12 {
-  const ns = cloneState12(state);
+  let ns = cloneState12(state);
   const board = ns.board;
   const t = board[tSq.row][tSq.col];
   if (!t) return advanceTurn(ns);
   ns.capturedBy[ns.currentTurn].push(t);
-  if (t.type === "mystic-king") {
-    ns.eliminatedPlayers.push(t.color);
-    ns.justEliminated = t.color;
-    ns.turnOrder = ns.turnOrder.filter(p => p !== t.color);
-    for (let r = 0; r < 12; r++)
-      for (let c = 0; c < 12; c++)
-        if (board[r][c]?.color === t.color) board[r][c] = null;
-    const w = checkWinner(ns.turnOrder);
-    if (w) { ns.status = "finished"; ns.winner = w; ns.currentTurn = w; return ns; }
-  } else {
-    board[tSq.row][tSq.col] = null;
-  }
+  // Axe swing kills whatever it hits — including a King — as a normal
+  // capture only. It does not eliminate the player by itself.
+  board[tSq.row][tSq.col] = null;
+  ns = applyEliminationCheck12(ns);
+  if (ns.status === "finished") return ns;
   return advanceTurn(ns);
 }

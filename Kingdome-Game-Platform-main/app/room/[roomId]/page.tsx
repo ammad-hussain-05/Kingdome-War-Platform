@@ -8,6 +8,7 @@ import { getModeFromRoomId } from "@/lib/lobby/id-generator";
 import { createSocket } from "@/lib/lobby/socket-client";
 import { getActiveSocket, setActiveSocket } from "@/lib/lobby/room-store";
 import { Footer } from "@/components/footer";
+import { DisclaimerFeedback } from "@/components/disclaimer-feedback";
 
 const MODE_COLORS: Record<string,string> = {
   "8x8": "#d4a843",
@@ -370,6 +371,7 @@ export default function RoomPage() {
         </div>
       </div>
 
+      <DisclaimerFeedback />
       <Footer />
     </>
   );
