@@ -30,6 +30,9 @@ export interface GameState12 {
   // 3rd/4th player color slots into this record without further changes here.
   capturedBy: Record<PlayerColor, Piece12[]>;
   selectedSquare: Square12 | null; validMoves: Square12[];
+  // Paladin Super Move (one-time 3-square surprise attack) — kept wholly
+  // separate from validMoves so it never appears as a normal move option.
+  superMoves: Square12[]; superMoveMode: boolean;
   status: "playing" | "finished"; winner: PlayerColor | null;
   lastMove: { from: Square12; to: Square12 } | null;
   check: PlayerColor | null;
@@ -55,6 +58,7 @@ export function cloneState12(s: GameState12): GameState12 {
     eliminatedPlayers: [...s.eliminatedPlayers],
     capturedBy: { white: [...s.capturedBy.white], black: [...s.capturedBy.black] },
     validMoves: [...s.validMoves],
+    superMoves: [...s.superMoves],
     specialData: s.specialData ? { ...s.specialData } : null,
   };
 }
@@ -139,6 +143,7 @@ export function createInitialGameState12(): GameState12 {
     eliminatedPlayers: [],
     capturedBy: { white: [], black: [] },
     selectedSquare: null, validMoves: [],
+    superMoves: [], superMoveMode: false,
     status: "playing", winner: null,
     lastMove: null, check: null,
     specialMode: null, specialData: null,
@@ -211,12 +216,17 @@ export function getRawMoves12(b: Board12, r: number, c: number): Square12[] {
     case "super-queen":  m = slide(b,r,c,ALL8,color); break;
     case "dragon":
       // Special attack (paladin-style) plus the Dragon-exclusive fly-over-
-      // own-pieces strike; Gargoyle shares the base move + special attack
-      // but never the fly-over.
+      // own-pieces strike.
       m = [...slide(b,r,c,ALL8,color), ...os(b,r,c,color), ...lj(b,r,c,color).filter(s => b[s.row][s.col] && b[s.row][s.col]!.color !== color)];
       break;
     case "gargoyle":
-      m = [...slide(b,r,c,ALL8,color), ...os(b,r,c,color)];
+      // Wing/Tail Sweep (1 square) + Fire Attack (2 squares), any of the 8
+      // directions, every turn — no unlimited slide, no one-time limit.
+      for (const [dr, dc] of ALL8)
+        for (const d of [1, 2]) {
+          const rr = r + dr * d, cc = c + dc * d;
+          if (inB(rr, cc) && b[rr][cc]?.color !== color) m.push({ row: rr, col: cc });
+        }
       break;
     case "wizard":
     case "sorceress":
@@ -229,13 +239,11 @@ export function getRawMoves12(b: Board12, r: number, c: number): Square12[] {
     case "mage":         m = slide(b,r,c,ALL8,color); break;
     case "elvin-archer": m = [...slide(b,r,c,ALL8,color), ...lj(b,r,c,color), ...os(b,r,c,color)]; break;
     case "paladin":
+      // Normal move/kill: 1 square any direction, every turn — nothing
+      // more. The 3-square Super Move is a wholly separate, one-time
+      // ability (see getPaladinSuperMoves12 below); it is never part of
+      // the piece's regular move list.
       m = [...os(b,r,c,color)];
-      if (!p.paladanSuperUsed)
-        for (const [dr, dc] of ALL8)
-          for (const d of [2, 3]) {
-            const rr = r + dr * d, cc = c + dc * d;
-            if (inB(rr, cc) && b[rr][cc]?.color !== color) m.push({ row: rr, col: cc });
-          }
       break;
   }
   // Only a Wizard or Sorceress may kill a Wizard or Sorceress — every other
@@ -247,6 +255,25 @@ export function getRawMoves12(b: Board12, r: number, c: number): Square12[] {
     });
   }
   return dd(m);
+}
+
+// ─── PALADIN SUPER MOVE (one-time 3-square surprise attack) ──────────────────
+// Wholly separate from getRawMoves12/getLegalMoves12 — never merged into the
+// piece's regular move list. Only offered once per Paladin (paladanSuperUsed
+// gates it), and only via its own selection path in the UI.
+export function getPaladinSuperMoves12(b: Board12, r: number, c: number): Square12[] {
+  const p = b[r][c];
+  if (!p || p.type !== "paladin" || p.paladanSuperUsed) return [];
+  const m: Square12[] = [];
+  for (const [dr, dc] of ALL8) {
+    const rr = r + dr * 3, cc = c + dc * 3;
+    if (inB(rr, cc) && b[rr][cc]?.color !== p.color) m.push({ row: rr, col: cc });
+  }
+  // Same Wizard/Sorceress kill-protection as every other piece.
+  return m.filter(s => {
+    const t = b[s.row][s.col];
+    return !(t && (t.type === "wizard" || t.type === "sorceress"));
+  });
 }
 
 export function findKing12(b: Board12, color: PlayerColor): Square12 | null {
@@ -263,6 +290,7 @@ export function isKingInCheck12(b: Board12, color: PlayerColor, active: PlayerCo
     const p = b[r][c];
     if (p && p.color !== color && active.includes(p.color)) {
       if (getRawMoves12(b, r, c).some(m => sq12Eq(m, k))) return true;
+      if (p.type === "paladin" && getPaladinSuperMoves12(b, r, c).some(m => sq12Eq(m, k))) return true;
     }
   }
   return false;
@@ -272,6 +300,17 @@ export function getLegalMoves12(b: Board12, row: number, col: number, active: Pl
   const p = b[row][col];
   if (!p) return [];
   return getRawMoves12(b, row, col).filter(to => {
+    const t = cloneBoard12(b);
+    t[to.row][to.col] = t[row][col];
+    t[row][col] = null;
+    return !isKingInCheck12(t, p.color, active);
+  });
+}
+
+export function getLegalPaladinSuperMoves12(b: Board12, row: number, col: number, active: PlayerColor[]): Square12[] {
+  const p = b[row][col];
+  if (!p) return [];
+  return getPaladinSuperMoves12(b, row, col).filter(to => {
     const t = cloneBoard12(b);
     t[to.row][to.col] = t[row][col];
     t[row][col] = null;
@@ -450,6 +489,7 @@ export function advanceTurn(state: GameState12): GameState12 {
   let ns = cloneState12(state);
   ns.specialMode = null; ns.specialData = null; ns.spellMessage = null;
   ns.pendingAxeSquare = null; ns.selectedSquare = null; ns.validMoves = [];
+  ns.superMoves = []; ns.superMoveMode = false;
   ns.justEliminated = null;
   // A resolved (or abandoned) Wish dice roll must never survive a turn
   // transition — otherwise handleClick's "a dice roll is awaiting
@@ -520,6 +560,7 @@ export function executeMove12(state: GameState12, from: Square12, to: Square12):
   board[from.row][from.col] = null;
   ns.lastMove = { from, to };
   ns.selectedSquare = null; ns.validMoves = [];
+  ns.superMoves = []; ns.superMoveMode = false;
   ns.specialMode = null; ns.specialData = null; ns.spellMessage = null; ns.wishDiceResult = null;
 
   ns = applyEliminationCheck12(ns);

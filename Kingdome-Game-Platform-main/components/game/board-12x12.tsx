@@ -6,7 +6,7 @@ import {
   sq12Eq, pieceImagePath, findSorceress, findWizard, findKing12,
   applySleepSpell, applyTeleportSpell, applyWizardTeleport,
   applyMageSacrifice, applyAxeSwing, getAxeSwingSquares,
-  rollWishDice, cloneState12, applyKingMorph,
+  rollWishDice, cloneState12, applyKingMorph, getLegalPaladinSuperMoves12,
 } from "@/lib/game/rules-12x12";
 import Fireworks from "@/components/game/fireworks";
 
@@ -17,10 +17,10 @@ const EMOJI: Record<PieceType12, string> = {
   "cavalier":"🏇","mage":"✨","elvin-archer":"🏹","paladin":"🛡️",
 };
 const PIECE_INFO: Record<PieceType12,{name:string;move:string;special:string}> = {
-  "mystic-king": {name:"Mystic King",move:"L-shape + 1 any dir",special:"Last Wish: Wizard sacrifices himself to morph the King into any piece"},
+  "mystic-king": {name:"Mystic King",move:"L-shape + 1 square any direction",special:"Last Wish: Wizard sacrifices himself to morph the King into any piece"},
   "super-queen": {name:"Super Queen",move:"Any direction, unlimited",special:"Double move if Sorceress alive"},
   "dragon":      {name:"Dragon",move:"Any dir unlimited + 1-square special attack",special:"Flies over own pieces for a kill"},
-  "gargoyle":    {name:"Gargoyle",move:"Any dir unlimited",special:"1-square special attack in any direction (tail), like a Paladin"},
+  "gargoyle":    {name:"Gargoyle",move:"Wing/Tail attack 1 square in any direction",special:"Fire Attack: 2 squares in any direction"},
   "wizard":      {name:"Wizard",move:"Any dir (ethereal, can't kill humans)",special:"Teleport any piece by touch"},
   "sorceress":   {name:"Sorceress",move:"Any dir (ethereal, can't kill humans)",special:"3 spells: 😴 Sleep / 🌀 Teleport / ⭐ Wish (dice)"},
   "super-knight":{name:"Super Knight",move:"L-shape (can double jump)",special:"Two L-jumps possible in one turn"},
@@ -29,7 +29,7 @@ const PIECE_INFO: Record<PieceType12,{name:string;move:string;special:string}> =
   "cavalier":    {name:"Cavalier/Prince",move:"L-shape + 1 any dir",special:"Always lands opposite color square"},
   "mage":        {name:"Mage/Princess",move:"Any direction unlimited",special:"Sacrifice self by touch to restore Super Queen's full power"},
   "elvin-archer":{name:"Elvin Archer",move:"Any dir + L-shape + 1 step",special:"Sword/dagger = 1-square paladin move"},
-  "paladin":     {name:"Paladin",move:"1 square any direction",special:"Super attack 2-3 squares ONCE only"},
+  "paladin":     {name:"Paladin",move:"Normal movement: 1 square any direction",special:"Super Move: one-time 3-square surprise attack in any direction, then 1-square only"},
 };
 // Rules/guide icons use the single-portrait art in public/all-characters —
 // no color variant needed since these badges are purely illustrative.
@@ -336,7 +336,7 @@ function SpecialPanel({gs,myColor,onAction,onCancel}:{gs:GameState12;myColor:Pla
     return null;
   };
   const mNQ=findMNQ();
-  if(!hasSorc&&!hasWiz&&!hasKingMorph&&!mNQ&&!gs.spellMessage)return null;
+  if(!hasSorc&&!hasWiz&&!hasKingMorph&&!mNQ&&!gs.spellMessage&&!gs.superMoveMode)return null;
   const btn=(bg:string,border:string,color:string)=>({padding:"8px 14px",borderRadius:10,background:bg,border:`1px solid ${border}`,color,fontSize:11,cursor:"pointer",fontWeight:700,transition:"all .2s",boxShadow:`0 4px 16px ${bg}80`});
   // Only the Sorceress's third spell — the Wish — is dice-gated in the
   // reference rules; every other spell/special action here is guaranteed.
@@ -358,7 +358,7 @@ function SpecialPanel({gs,myColor,onAction,onCancel}:{gs:GameState12;myColor:Pla
           ))}
         </div>
       )}
-      {!gs.specialMode&&gs.wishDiceResult===null&&(
+      {!gs.specialMode&&gs.wishDiceResult===null&&!gs.superMoveMode&&(
         <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
           {hasSorc&&<><button onClick={()=>onAction("spell-sleep")} style={btn("rgba(80,60,200,.2)","rgba(80,60,200,.4)","#9090ff")}>😴 Sleep ({spL})</button><button onClick={()=>onAction("spell-teleport")} style={btn("rgba(180,60,200,.2)","rgba(180,60,200,.4)","#d080ff")}>🌀 Teleport</button><button onClick={()=>onAction("spell-wish")} style={btn("rgba(200,160,20,.2)","rgba(200,160,20,.4)","#f0c040")}>⭐ Wish</button></>}
           {hasWiz&&<button onClick={()=>onAction("wizard-teleport")} style={btn("rgba(60,150,200,.2)","rgba(60,150,200,.4)","#60c0f0")}>🧙 Wizard Teleport</button>}
@@ -366,7 +366,8 @@ function SpecialPanel({gs,myColor,onAction,onCancel}:{gs:GameState12;myColor:Pla
           {mNQ&&<button onClick={()=>onAction("mage-sacrifice",mNQ)} style={btn("rgba(200,80,80,.2)","rgba(200,80,80,.4)","#ff9090")}>💫 Mage Sacrifice</button>}
         </div>
       )}
-      {gs.specialMode&&gs.wishDiceResult===null&&<div style={{display:"flex",justifyContent:"center",marginTop:10}}><button onClick={onCancel} style={{padding:"6px 18px",borderRadius:9,background:"rgba(255,80,80,.1)",border:"1px solid rgba(255,80,80,.25)",color:"#ff8080",fontSize:12,cursor:"pointer",fontWeight:700}}>✕ Cancel</button></div>}
+      {gs.superMoveMode&&<p style={{margin:"0 0 4px",fontSize:11,color:"#ffb347",textAlign:"center",fontWeight:700}}>⚔ Choose a square 3 spaces away to strike</p>}
+      {(gs.specialMode||gs.superMoveMode)&&gs.wishDiceResult===null&&<div style={{display:"flex",justifyContent:"center",marginTop:10}}><button onClick={onCancel} style={{padding:"6px 18px",borderRadius:9,background:"rgba(255,80,80,.1)",border:"1px solid rgba(255,80,80,.25)",color:"#ff8080",fontSize:12,cursor:"pointer",fontWeight:700}}>✕ Cancel</button></div>}
     </div>
   );
 }
@@ -552,18 +553,42 @@ export default function Board12x12({myColor,roomId,playerNames,socket,onGameEnd}
 
   const cancelSpecial=useCallback(()=>{
     const state=gsRef.current;
-    const ns={...cloneState12(state),specialMode:null as any,specialData:null,spellMessage:null,wishDiceResult:null,selectedSquare:null,validMoves:[]};
+    const ns={...cloneState12(state),specialMode:null as any,specialData:null,spellMessage:null,wishDiceResult:null,selectedSquare:null,validMoves:[],superMoves:[],superMoveMode:false};
     setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
   },[roomId,socket]);
+
+  // ─── PALADIN SUPER MOVE (one-time 3-square surprise attack) ────────────────
+  const handleSuperAttack=useCallback(()=>{
+    const state=gsRef.current;
+    if(!state.selectedSquare)return;
+    const {row,col}=state.selectedSquare;
+    const piece=state.board[row][col];
+    if(!piece||piece.type!=="paladin"||piece.color!==myColor||piece.paladanSuperUsed)return;
+    const superMoves=getLegalPaladinSuperMoves12(state.board,row,col,state.turnOrder);
+    snd("select");
+    const ns={...cloneState12(state),superMoves,superMoveMode:true,validMoves:[]};
+    setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
+  },[myColor,roomId,socket]);
 
   // ─── CLICK HANDLER ────────────────────────────────────────────────────────
   const handleClick=useCallback((row:number,col:number)=>{
     const state=gsRef.current;
     if(state.status==="finished"||state.currentTurn!==myColor||isElim)return;
     if(state.wishDiceResult!==null)return; // a dice roll is awaiting Confirm/End Turn — ignore board clicks
-    const {board,selectedSquare,validMoves,specialMode}=state;
+    const {board,selectedSquare,validMoves,superMoves,superMoveMode,specialMode}=state;
     const cp=board[row][col]; const sq:Square12={row,col};
     snd("click");
+
+    // Paladin Super Move — wholly separate from normal validMoves.
+    if(superMoveMode&&selectedSquare&&superMoves.some(m=>sq12Eq(m,sq))){
+      const ns=executeMove12(state,selectedSquare,sq);
+      setAnimSq(sq);setTimeout(()=>setAnimSq(null),450);
+      snd("super");
+      showMoveFeedback(ns,sq);
+      setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
+      if(ns.status==="finished"&&ns.winner){setTimeout(()=>{setShowWin(ns.winner);snd("win");},400);onGameEnd?.(ns.winner!);}
+      return;
+    }
 
     if(specialMode==="sorceress-sleep-select"){
       // Sleep is guaranteed, per the reference — no dice roll.
@@ -618,8 +643,8 @@ export default function Board12x12({myColor,roomId,playerNames,socket,onGameEnd}
       if(ns.status==="finished"&&ns.winner){setTimeout(()=>{setShowWin(ns.winner);snd("win");},400);onGameEnd?.(ns.winner!);}
       return;
     }
-    if(cp&&cp.color===myColor&&cp.sleepRoundsLeft===0){snd("select");const moves=getLegalMoves12(board,row,col,state.turnOrder);setGs(prev=>({...prev,selectedSquare:sq,validMoves:moves}));return;}
-    setGs(prev=>({...prev,selectedSquare:null,validMoves:[]}));
+    if(cp&&cp.color===myColor&&cp.sleepRoundsLeft===0){snd("select");const moves=getLegalMoves12(board,row,col,state.turnOrder);setGs(prev=>({...prev,selectedSquare:sq,validMoves:moves,superMoves:[],superMoveMode:false}));return;}
+    setGs(prev=>({...prev,selectedSquare:null,validMoves:[],superMoves:[],superMoveMode:false}));
   },[myColor,roomId,socket,onGameEnd,isElim]);
 
   // ─── QUIT ────────────────────────────────────────────────────────────────
@@ -704,6 +729,33 @@ const cols=[...Array(12)].map((_,i)=>i);
 
           {/* Buttons */}
           <div style={{display:"flex",flexDirection:"column",gap:10,width:"100%",marginTop:8,zIndex:20,position:"relative"}}>
+            {/* Paladin Super Attack */}
+            {(()=>{
+              const selSq=gs.selectedSquare;
+              const selPiece=selSq?gs.board[selSq.row][selSq.col]:null;
+              const selectedIsPaladin=!!selPiece&&selPiece.type==="paladin"&&selPiece.color===myColor;
+              const isMyTurn=gs.currentTurn===myColor&&gs.status==="playing";
+              if(!isMyTurn||!selectedIsPaladin)return null;
+              const paladanSuperUsed=!!selPiece?.paladanSuperUsed;
+              const superMoveMode=gs.superMoveMode;
+              return(
+                <button onClick={()=>{if(paladanSuperUsed)return;handleSuperAttack();}}
+                  style={{width:"100%",minHeight:58,padding:"12px 14px",borderRadius:16,cursor:paladanSuperUsed?"default":"pointer",
+                    background:paladanSuperUsed?"linear-gradient(135deg, rgba(42,32,18,0.9), rgba(120,15,8,0.95))":superMoveMode?"linear-gradient(135deg, rgba(255,140,0,0.75), rgba(90,45,0,0.85))":"linear-gradient(135deg, rgba(255,160,35,0.65), rgba(80,42,8,0.75))",
+                    border:`1px solid ${paladanSuperUsed?"rgba(120,90,45,.20)":superMoveMode?"rgba(255,160,40,.75)":"rgba(255,170,60,.42)"}`,
+                    display:"flex",alignItems:"center",gap:12,transition:"all .2s",opacity:paladanSuperUsed?.62:1,position:"relative",overflow:"hidden"}}>
+                  <span style={{width:34,height:34,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,background:paladanSuperUsed?"rgba(255,255,255,.05)":"rgba(255,160,35,.16)",border:"1px solid rgba(255,200,120,.14)",flexShrink:0}}>⚡</span>
+                  <div style={{textAlign:"left",minWidth:0}}>
+                    <p style={{margin:0,fontSize:11,fontWeight:800,letterSpacing:".12em",textTransform:"uppercase",color:paladanSuperUsed?"rgba(170,130,70,.42)":superMoveMode?"#ffb347":"#ffc46b"}}>
+                      {paladanSuperUsed?"Super Used":superMoveMode?"Super Active":"Super Attack"}
+                    </p>
+                    <p style={{margin:"3px 0 0",fontSize:10,color:paladanSuperUsed?"rgba(170,130,70,.28)":"rgba(255,195,110,.50)"}}>
+                      {paladanSuperUsed?"One-time power spent":"Paladin 3-square strike"}
+                    </p>
+                  </div>
+                </button>
+              );
+            })()}
             <button onClick={()=>setShowRules(true)} style={{width:"100%",height:50,background:"#080a08",color:"#4ade80",border:"1px solid rgba(74,222,128,.35)",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:".1em",textTransform:"uppercase",fontFamily:"'Cinzel',Georgia,serif",boxShadow:"0 0 18px rgba(74,222,128,.25),0 4px 16px rgba(0,0,0,.7),inset 0 1px 0 rgba(74,222,128,.15)",transition:"all .2s"}}
               onMouseEnter={e=>{e.currentTarget.style.background="rgba(74,222,128,.08)";e.currentTarget.style.borderColor="rgba(74,222,128,.6)";}}
               onMouseLeave={e=>{e.currentTarget.style.background="#080a08";e.currentTarget.style.borderColor="rgba(74,222,128,.35)";}}>
@@ -734,6 +786,7 @@ const cols=[...Array(12)].map((_,i)=>i);
                   const isLight=(row+col)%2===0;
                   const isSel=!!gs.selectedSquare&&sq12Eq(gs.selectedSquare,sq);
                   const isValid=gs.validMoves.some(m=>sq12Eq(m,sq));
+                  const isSuper=gs.superMoveMode&&gs.superMoves.some(m=>sq12Eq(m,sq));
                   const isLF=!!gs.lastMove&&sq12Eq(gs.lastMove.from,sq);
                   const isLT=!!gs.lastMove&&sq12Eq(gs.lastMove.to,sq);
                   const isChk=piece?.type==="mystic-king"&&piece.color===gs.check;
@@ -750,6 +803,7 @@ const cols=[...Array(12)].map((_,i)=>i);
                   else if(isRisky)ov="rgba(255,60,60,.25)";
                   else if(isLF||isLT)ov="rgba(212,168,67,.2)";
                   else if(isAxeT)ov="rgba(255,80,0,.45)";
+                  if(gs.superMoveMode&&!isSel&&!isSuper)ov=ov||"rgba(0,0,0,.1)";
                   return(
                     <div key={`${row}-${col}`} className="sq" onClick={()=>handleClick(row,col)} style={{width:sqSize,height:sqSize,background:baseBg}}>
                       <div style={{position:"absolute",inset:0,zIndex:0,pointerEvents:"none",background:isLight?"linear-gradient(135deg,rgba(255,255,255,.1) 0%,transparent 55%)":"linear-gradient(135deg,rgba(255,255,255,.04) 0%,rgba(0,0,0,.2) 100%)"}}/>
@@ -759,6 +813,8 @@ const cols=[...Array(12)].map((_,i)=>i);
                       {isValid&&!piece&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:sqSize*.3,height:sqSize*.3,borderRadius:"50%",background:"rgba(212,168,67,.68)",boxShadow:"0 0 14px rgba(212,168,67,.5)",animation:"dotPop .14s ease both",pointerEvents:"none",zIndex:4}}/>}
                       {isValid&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"3px solid rgba(212,168,67,.82)",borderRadius:3,boxShadow:"inset 0 0 8px rgba(212,168,67,.25)",animation:"dotPop .14s ease both",pointerEvents:"none"}}/>}
                       {isAxeT&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"3px solid rgba(255,80,0,.85)",borderRadius:3,animation:"dotPop .14s ease both",pointerEvents:"none"}}/>}
+                      {isSuper&&!piece&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:sqSize*.34,height:sqSize*.34,borderRadius:"50%",background:"rgba(255,140,0,.82)",boxShadow:"0 0 16px rgba(255,140,0,.7)",animation:"dotPop .14s ease both",pointerEvents:"none",zIndex:4}}/>}
+                      {isSuper&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"3px solid rgba(255,140,0,.9)",borderRadius:3,boxShadow:"inset 0 0 8px rgba(255,140,0,.3)",animation:"dotPop .14s ease both",pointerEvents:"none"}}/>}
                       {isGreat&&<div style={{position:"absolute",inset:0,zIndex:4,borderRadius:3,border:"2px solid rgba(255,215,0,.6)",boxShadow:"inset 0 0 16px rgba(255,215,0,.2)",pointerEvents:"none"}}/>}
                       {isRisky&&<div style={{position:"absolute",inset:0,zIndex:4,borderRadius:3,border:"2px solid rgba(255,60,60,.6)",boxShadow:"inset 0 0 16px rgba(255,60,60,.2)",pointerEvents:"none"}}/>}
                       {piece&&<PieceImg piece={piece} sqSize={sqSize} isAnim={isAnim} isGreat={isGreat} isRisky={isRisky}/>}
