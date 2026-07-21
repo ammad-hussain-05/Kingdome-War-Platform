@@ -24,6 +24,8 @@ const characters = [
   { name: "Dragon",          file: "/all-characters/Dragon.png",          num: "19" },
   { name: "Cavalier Prince", file: "/all-characters/Cavalier Prince.png", num: "20" },
   { name: "Archer",          file: "/all-characters/Archer.png",          num: "21" },
+  { name: "Assassin",        file: "/all-characters/Assassin.png",        num: "22" },
+  { name: "Paladin",         file: "/all-characters/Paladin.png",         num: "23" },
 ]
 
 const TOTAL = characters.length
@@ -43,11 +45,11 @@ const SPARKS = Array.from({ length: 60 }, (_, i) => ({
 // CHARACTER CARD — pure CSS 3D rotation, no Three.js
 // No unmount issues, no flicker, always visible
 // ─────────────────────────────────────────────
-function CharCard({ ch }: { ch: typeof characters[0] }) {
+function CharCard({ ch, imgH }: { ch: typeof characters[0]; imgH: number }) {
   return (
     <div style={{
       width: "100%",
-      height: "300px",
+      height: `${imgH}px`,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -70,16 +72,20 @@ function CharCard({ ch }: { ch: typeof characters[0] }) {
   )
 }
 
+// Linear interpolation clamped between a min/max viewport width —
+// gives smooth, breakpoint-free scaling across phones, tablets and desktops.
+const clampNum = (min: number, val: number, max: number) => Math.min(max, Math.max(min, val))
+
 // ─────────────────────────────────────────────
 // MAIN EXPORT
 // ─────────────────────────────────────────────
 export default function CharactersSection() {
   const [active,   setActive]  = useState(0)
-  const [isMobile, setMobile]  = useState(false)
+  const [vw,       setVw]      = useState(1024)
   const [paused,   setPaused]  = useState(false)
 
   useEffect(() => {
-    const check = () => setMobile(window.innerWidth < 768)
+    const check = () => setVw(window.innerWidth)
     check()
     window.addEventListener("resize", check)
     return () => window.removeEventListener("resize", check)
@@ -91,9 +97,16 @@ export default function CharactersSection() {
     return () => clearInterval(id)
   }, [paused])
 
-  const CW  = isMobile ? 170 : 230
-  const SW  = isMobile ? 110 : 155
-  const GAP = isMobile ? 10  : 22
+  const isMobile = vw < 768
+
+  // Fluid scale factor: 0 at small phones, 1 at desktop — no hard breakpoint jump,
+  // so sizing (and the space reserved for the name tag) tracks viewport width smoothly.
+  const t = clampNum(0, (vw - 360) / (1024 - 360), 1)
+  const lerp = (min: number, max: number) => min + (max - min) * t
+
+  const CW  = lerp(140, 230)
+  const SW  = lerp(92,  155)
+  const GAP = lerp(8,   22)
 
   const slotX = (s: number) => {
     if (s === 0) return 0
@@ -103,7 +116,16 @@ export default function CharactersSection() {
     return sign * x
   }
 
-  const containerH = isMobile ? 320 : 440
+  // Character art height — scales with viewport so the name tag below it
+  // always has room and never gets clipped by the carousel's overflow:hidden.
+  const imgH = lerp(150, 300)
+  // Extra height reserved beyond the art for margin + (possibly wrapped) name tag.
+  const containerH = lerp(330, 440)
+
+  const nameFontSize      = lerp(8, 11)
+  const nameLetterSpacing = lerp(1, 2)
+  const namePadV          = lerp(5, 7)
+  const namePadH          = lerp(8, 10)
 
   return (
     <>
@@ -313,15 +335,15 @@ export default function CharactersSection() {
                     }}
                   >
                     {/* Card — no border, pure transparent */}
-                    <div style={{ width: "100%", minHeight: 200 }}>
-                      <CharCard ch={ch} />
+                    <div style={{ width: "100%", minHeight: imgH }}>
+                      <CharCard ch={ch} imgH={imgH} />
                     </div>
 
                     {/* Name tag */}
                     <div style={{
                       marginTop:      8,
                       width:          "88%",
-                      padding:        "7px 10px",
+                      padding:        `${namePadV}px ${namePadH}px`,
                       background:     abs === 0
                         ? "linear-gradient(90deg,#3a2600,#6b4a00,#3a2600)"
                         : "rgba(30,20,0,.8)",
@@ -331,6 +353,8 @@ export default function CharactersSection() {
                       justifyContent: "center",
                       alignItems:     "center",
                       gap:            6,
+                      flexShrink:     0,
+                      boxSizing:      "border-box",
                     }}>
                       {abs === 0 && (
                         <span style={{
@@ -342,12 +366,16 @@ export default function CharactersSection() {
                       )}
                       <span style={{
                         fontFamily:    "'Cinzel', serif",
-                        fontSize:      isMobile ? 9 : 11,
+                        fontSize:      nameFontSize,
                         fontWeight:    700,
-                        letterSpacing: "2px",
+                        letterSpacing: `${nameLetterSpacing}px`,
                         textTransform: "uppercase",
                         color:         abs === 0 ? "#f0d080" : "rgba(201,168,76,.6)",
                         textAlign:     "center",
+                        lineHeight:    1.35,
+                        whiteSpace:    "normal",
+                        wordBreak:     "break-word",
+                        overflowWrap:  "break-word",
                       }}>
                         {ch.name}
                       </span>
@@ -359,7 +387,7 @@ export default function CharactersSection() {
           </div>
 
           {/* ── DOT NAV ── */}
-          <div style={{ display:"flex", justifyContent:"center", gap:6, marginTop:28 }}>
+          <div style={{ display:"flex", flexWrap:"wrap", justifyContent:"center", gap:6, rowGap:8, marginTop:28, maxWidth:"100%", padding:"0 8px" }}>
             {characters.map((_, i) => (
               <div
                 key={i}

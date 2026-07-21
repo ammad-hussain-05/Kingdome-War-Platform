@@ -28,6 +28,12 @@ export interface GameState {
   // UX enhancements
   lastMoveQuality: "great" | "risky" | "normal" | null;
   lastMoveTo: Square | null;
+  // Paladin reverse castle — squares adjacent to the selected paladin
+  // occupied by a friendly non-paladin piece it can swap places with.
+  castleMoves: Square[];
+  // Paladin back-rank retrieval — set when a paladin reaches the enemy
+  // back rank and its owner has a captured piece available to bring back.
+  pendingRetrieve: { color: Color; square: Square } | null;
 }
 
 // ─── INITIAL BOARD ────────────────────────────────────────────────────────────
@@ -55,6 +61,7 @@ export function createInitialGameState(): GameState {
     status: "playing", check: null, lastMove: null,
     passUsed: { white:false, black:false },
     lastMoveQuality: null, lastMoveTo: null,
+    castleMoves: [], pendingRetrieve: null,
   };
 }
 
@@ -73,6 +80,7 @@ export function cloneGameState(state: GameState): GameState {
     capturedByBlack: [...state.capturedByBlack],
     validMoves: [...state.validMoves],
     superMoves: [...state.superMoves],
+    castleMoves: [...state.castleMoves],
     passUsed: { ...state.passUsed },
   };
 }
@@ -156,6 +164,27 @@ export function getSuperMoves(board: Board, row: number, col: number): Square[] 
     }
   }
   return moves;
+}
+
+// ─── PALADIN REVERSE CASTLE ───────────────────────────────────────────────────
+// A paladin adjacent to a friendly non-paladin piece may swap places with it
+// (in any of the 8 directions), letting that piece "defend" the paladin.
+export function getCastleMoves(board: Board, row: number, col: number): Square[] {
+  const piece = board[row][col];
+  if (!piece || piece.type !== "paladin") return [];
+  const dirs: [number,number][] = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+  const moves: Square[] = [];
+  dirs.forEach(([dr,dc]) => {
+    const r = row+dr, c = col+dc;
+    if (!inBounds(r,c)) return;
+    const ally = board[r][c];
+    if (ally && ally.color === piece.color && ally.type !== "paladin") moves.push({ row:r, col:c });
+  });
+  return moves;
+}
+
+export function getLegalCastleMoves(board: Board, row: number, col: number): Square[] {
+  return getCastleMoves(board, row, col);
 }
 
 // ─── CHECK DETECTION ─────────────────────────────────────────────────────────
@@ -419,6 +448,7 @@ export function executeMove(
   ns.selectedSquare = null;
   ns.validMoves = [];
   ns.superMoves = [];
+  ns.castleMoves = [];
   ns.superMoveMode = false;
 
   const winner = getWinnerByElimination(board);
@@ -426,25 +456,102 @@ export function executeMove(
   if (winner) {
     ns.status = winner;
     ns.check = null;
+    ns.pendingRetrieve = null;
     return ns;
   }
 
+  // Paladin reaching the enemy back rank (like a pawn) may retrieve one of
+  // its own previously-captured pieces. Turn stays with the mover until the
+  // retrieval is resolved (see retrieveCapturedPiece / skipRetrieve below).
+  if (piece.type === "paladin") {
+    const backRank = piece.color === "white" ? 0 : 7;
+    if (to.row === backRank) {
+      const pool = piece.color === "white" ? ns.capturedByBlack : ns.capturedByWhite;
+      if (pool.length > 0) {
+        ns.pendingRetrieve = { color: piece.color, square: to };
+        ns.status = "playing";
+        ns.check = null;
+        return ns;
+      }
+    }
+  }
+
+  ns.pendingRetrieve = null;
   ns.currentTurn = piece.color === "white" ? "black" : "white";
   ns.status = "playing";
   ns.check = null;
 
   return ns;
 }
-// ─── PASS TURN (Mexican Standoff) ────────────────────────────────────────────
+
+// ─── PALADIN BACK-RANK RETRIEVAL ──────────────────────────────────────────────
+export function retrieveCapturedPiece(state: GameState, capturedPieceId: string): GameState {
+  if (!state.pendingRetrieve) return state;
+  const { color, square } = state.pendingRetrieve;
+  const ns = cloneGameState(state);
+  const pool = color === "white" ? ns.capturedByBlack : ns.capturedByWhite;
+  const idx = pool.findIndex(p => p.id === capturedPieceId);
+  if (idx === -1) { ns.pendingRetrieve = null; return ns; }
+
+  const [revived] = pool.splice(idx, 1);
+  ns.board[square.row][square.col] = {
+    ...revived, color, hasMoved: true, paladanSuperUsed: false,
+    id: `retr-${revived.type}-${square.row}-${square.col}`,
+  };
+  ns.pendingRetrieve = null;
+  ns.currentTurn = color === "white" ? "black" : "white";
+  return ns;
+}
+
+export function skipRetrieve(state: GameState): GameState {
+  if (!state.pendingRetrieve) return state;
+  const color = state.pendingRetrieve.color;
+  const ns = cloneGameState(state);
+  ns.pendingRetrieve = null;
+  ns.currentTurn = color === "white" ? "black" : "white";
+  return ns;
+}
+
+// ─── PALADIN REVERSE CASTLE (execute) ─────────────────────────────────────────
+export function executeCastle(state: GameState, from: Square, to: Square): GameState {
+  const ns = cloneGameState(state);
+  const board = ns.board;
+  const paladin = board[from.row][from.col];
+  const ally = board[to.row][to.col];
+  if (!paladin || paladin.type !== "paladin" || !ally || ally.type === "paladin" || ally.color !== paladin.color) {
+    return state;
+  }
+
+  board[from.row][from.col] = { ...ally, hasMoved: true };
+  board[to.row][to.col] = { ...paladin, hasMoved: true };
+
+  ns.lastMove = { from, to };
+  ns.selectedSquare = null;
+  ns.validMoves = [];
+  ns.superMoves = [];
+  ns.castleMoves = [];
+  ns.superMoveMode = false;
+  ns.lastMoveQuality = null;
+  ns.lastMoveTo = null;
+  ns.pendingRetrieve = null;
+  ns.currentTurn = paladin.color === "white" ? "black" : "white";
+  ns.status = "playing";
+  ns.check = null;
+
+  return ns;
+}
+
+// ─── PASS TURN (Mexican Standoff) ─────────────────────────────────────────────
+// Either player may pass on their turn — unlimited uses, per the reference
+// rules ("you don't have to move... let your opponent make another move").
 export function passTurn(state: GameState): GameState {
   const ns = cloneGameState(state);
   const color = state.currentTurn;
-  if (ns.passUsed[color]) return state;
-  ns.passUsed[color] = true;
   ns.currentTurn = color === "white" ? "black" : "white";
   ns.selectedSquare = null;
   ns.validMoves = [];
   ns.superMoves = [];
+  ns.castleMoves = [];
   ns.superMoveMode = false;
   ns.lastMoveQuality = null;
   ns.lastMoveTo = null;

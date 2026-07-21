@@ -3,12 +3,10 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import type { GameState12, Square12, PlayerColor, PieceType12, Piece12 } from "@/lib/game/rules-12x12";
 import {
   createInitialGameState12, getLegalMoves12, executeMove12, advanceTurn,
-  sq12Eq, pieceImagePath, findSorceress, findWizard,
+  sq12Eq, pieceImagePath, findSorceress, findWizard, findKing12,
   applySleepSpell, applyTeleportSpell, applyWizardTeleport,
   applyMageSacrifice, applyAxeSwing, getAxeSwingSquares,
-  rollWishDice, cloneState12,
-  applyWarlockBind, getThiefStealTargets, applyThiefSteal,
-  applyBindSpell, consumeSorceressCharge, consumeMageOnly,
+  rollWishDice, cloneState12, applyKingMorph,
 } from "@/lib/game/rules-12x12";
 import Fireworks from "@/components/game/fireworks";
 
@@ -17,25 +15,43 @@ const EMOJI: Record<PieceType12, string> = {
   "mystic-king":"👑","super-queen":"🌟","dragon":"🐉","gargoyle":"👹","wizard":"🧙",
   "sorceress":"🔮","super-knight":"⚔️","assassin":"🗡️","executioner":"🪓",
   "cavalier":"🏇","mage":"✨","elvin-archer":"🏹","paladin":"🛡️",
-  "warlock":"🌑","thief":"🗝️",
 };
 const PIECE_INFO: Record<PieceType12,{name:string;move:string;special:string}> = {
-  "mystic-king": {name:"Mystic King",move:"L-shape + 1 any dir",special:"Wizard can morph king if alive"},
+  "mystic-king": {name:"Mystic King",move:"L-shape + 1 any dir",special:"Last Wish: Wizard sacrifices himself to morph the King into any piece"},
   "super-queen": {name:"Super Queen",move:"Any direction, unlimited",special:"Double move if Sorceress alive"},
-  "dragon":      {name:"Dragon",move:"Any dir unlimited + L capture",special:"Flies over own pieces for L-attack"},
-  "gargoyle":    {name:"Gargoyle",move:"Any dir unlimited + L capture",special:"Same as Dragon"},
-  "wizard":      {name:"Wizard",move:"Any dir (ethereal)",special:"Teleport any piece by touch, or Bind Spell: freeze 1 enemy for 3 rounds (dice)"},
-  "sorceress":   {name:"Sorceress",move:"Any direction unlimited",special:"3 spells: 😴 Sleep / 🌀 Teleport / ⭐ Wish (dice)"},
+  "dragon":      {name:"Dragon",move:"Any dir unlimited + 1-square special attack",special:"Flies over own pieces for a kill"},
+  "gargoyle":    {name:"Gargoyle",move:"Any dir unlimited",special:"1-square special attack in any direction (tail), like a Paladin"},
+  "wizard":      {name:"Wizard",move:"Any dir (ethereal, can't kill humans)",special:"Teleport any piece by touch"},
+  "sorceress":   {name:"Sorceress",move:"Any dir (ethereal, can't kill humans)",special:"3 spells: 😴 Sleep / 🌀 Teleport / ⭐ Wish (dice)"},
   "super-knight":{name:"Super Knight",move:"L-shape (can double jump)",special:"Two L-jumps possible in one turn"},
-  "assassin":    {name:"Assassin",move:"Any dir + L-shape + 1 step",special:"Jumps over own pieces for L-move"},
+  "assassin":    {name:"Assassin",move:"Any dir + L-shape + 1 step",special:"L-shape like a Cavalier, plus 1-square Paladin-style kill"},
   "executioner": {name:"Executioner",move:"Straight lines only (rook)",special:"After stopping: swing axe 1 adj square"},
   "cavalier":    {name:"Cavalier/Prince",move:"L-shape + 1 any dir",special:"Always lands opposite color square"},
-  "mage":        {name:"Mage/Princess",move:"Any direction unlimited",special:"Sacrifice self to restore Super Queen (dice)"},
+  "mage":        {name:"Mage/Princess",move:"Any direction unlimited",special:"Sacrifice self by touch to restore Super Queen's full power"},
   "elvin-archer":{name:"Elvin Archer",move:"Any dir + L-shape + 1 step",special:"Sword/dagger = 1-square paladin move"},
   "paladin":     {name:"Paladin",move:"1 square any direction",special:"Super attack 2-3 squares ONCE only"},
-  "warlock":     {name:"Warlock",move:"Any dir unlimited (ethereal)",special:"Must move first, then binds ALL enemy pieces for 1 round. One use only"},
-  "thief":       {name:"Thief",move:"Any dir unlimited",special:"Triple jump (2-3 squares) to steal any piece ONCE (not the King)"},
 };
+// Rules/guide icons use the single-portrait art in public/all-characters —
+// no color variant needed since these badges are purely illustrative.
+const GUIDE_ICON_FILE: Partial<Record<PieceType12,string>> = {
+  "mystic-king":"Mystic King", "super-queen":"Super Queen", "dragon":"Dragon",
+  "gargoyle":"Gargoyle", "wizard":"Wizard", "sorceress":"Sorceress",
+  "super-knight":"Super Knight", "executioner":"Executioner", "assassin":"Assassin",
+  "cavalier":"Cavalier Prince", "mage":"Mage-Princess", "elvin-archer":"Elven Archer",
+  "paladin":"Paladin",
+};
+function guideIconPath(type: PieceType12): string {
+  const nm = GUIDE_ICON_FILE[type];
+  if (nm) return `/all-characters/${nm}.png`;
+  return pieceImagePath({ type, color:"white" } as Piece12);
+}
+function GuideIcon({ type }: { type: PieceType12 }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <>{EMOJI[type]}</>;
+  return <img src={guideIconPath(type)} alt={type} onError={() => setFailed(true)}
+    style={{ width:"82%", height:"82%", objectFit:"contain", pointerEvents:"none" }}/>;
+}
+
 const AC: Record<PlayerColor,string> = { white:"#e8dfc0", black:"#c8a96e" };
 const GL: Record<PlayerColor,string> = { white:"rgba(232,223,192,0.4)", black:"rgba(200,169,110,0.4)" };
 const ZONE: Record<string,string> = { white:"rgba(232,220,180,0.07)", black:"rgba(200,160,80,0.07)", grey:"rgba(138,157,181,0.07)" };
@@ -166,6 +182,14 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor;messages:ChatM
   );
 }
 
+// ─── CAPTURED PIECE ICON — shows the real sprite of the piece that was taken ──
+function CapturedPieceIcon({piece}:{piece:Piece12}){
+  const [failed,setFailed]=useState(false);
+  if(failed)return <span style={{fontSize:11,filter:"drop-shadow(0 1px 2px rgba(0,0,0,.7))"}}>{EMOJI[piece.type]}</span>;
+  return <img src={pieceImagePath(piece)} alt={piece.type} onError={()=>setFailed(true)}
+    style={{width:20,height:20,objectFit:"contain",filter:"drop-shadow(0 1px 3px rgba(0,0,0,.8))"}}/>;
+}
+
 // ─── PLAYER CARD ──────────────────────────────────────────────────────────────
 function PlayerCard({name,color,isMe,isActive,isElim,captured,inCheck}:{name:string;color:PlayerColor;isMe:boolean;isActive:boolean;isElim:boolean;captured:Piece12[];inCheck:boolean}){
   const ac=AC[color];
@@ -189,7 +213,7 @@ function PlayerCard({name,color,isMe,isActive,isElim,captured,inCheck}:{name:str
       </div>
       {captured.length>0&&(
         <div style={{display:"flex",flexWrap:"wrap",gap:3,maxHeight:32,overflow:"hidden"}}>
-          {captured.slice(0,10).map((p,i)=><span key={i} style={{fontSize:11,filter:"drop-shadow(0 1px 2px rgba(0,0,0,.7))"}}>{EMOJI[p.type]}</span>)}
+          {captured.slice(0,10).map((p,i)=><CapturedPieceIcon key={i} piece={p}/>)}
           {captured.length>10&&<span style={{fontSize:10,color:subColor}}>+{captured.length-10}</span>}
         </div>
       )}
@@ -224,7 +248,7 @@ function GuidePanel({myColor,gs}:{myColor:PlayerColor;gs:GameState12}){
               return(
                 <div key={type} style={{padding:"11px 12px",borderRadius:15,background:has?"linear-gradient(135deg,rgba(255,255,255,.055),rgba(255,255,255,.025))":"rgba(255,255,255,.015)",border:`1px solid ${has?ac+"24":"rgba(255,255,255,.04)"}`,opacity:has?1:.34,transition:"all .2s",boxShadow:has?"0 8px 18px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.07)":"none"}}>
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:7}}>
-                    <span style={{width:34,height:34,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,background:`linear-gradient(145deg,${ac}18,rgba(0,0,0,.38))`,border:`1px solid ${ac}22`,boxShadow:has?`0 0 12px ${GL[myColor]},inset 0 1px 0 rgba(255,255,255,.12)`:"none",filter:"drop-shadow(0 4px 6px rgba(0,0,0,.65))",flexShrink:0}}>{EMOJI[type]}</span>
+                    <span style={{width:34,height:34,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,background:`linear-gradient(145deg,${ac}18,rgba(0,0,0,.38))`,border:`1px solid ${ac}22`,boxShadow:has?`0 0 12px ${GL[myColor]},inset 0 1px 0 rgba(255,255,255,.12)`:"none",filter:"drop-shadow(0 4px 6px rgba(0,0,0,.65))",flexShrink:0,overflow:"hidden"}}><GuideIcon type={type}/></span>
                     <div style={{minWidth:0}}>
                       <p style={{margin:0,fontSize:12,fontWeight:900,color:has?ac:"rgba(180,140,60,.42)",letterSpacing:".05em"}}>{info.name}{!has?" ✗":""}</p>
                       <p style={{margin:"2px 0 0",fontSize:9,color:"rgba(210,200,175,.38)",textTransform:"uppercase",letterSpacing:".12em"}}>Unit Ability</p>
@@ -251,6 +275,47 @@ function GuidePanel({myColor,gs}:{myColor:PlayerColor;gs:GameState12}){
   );
 }
 
+// ─── KING'S LAST WISH: MORPH OPTION CARD ──────────────────────────────────────
+// Real board sprite in the casting player's own color (never a mix of both),
+// exact piece name, and the same move/special text as the Battle Guide —
+// hover (desktop) highlights the card; clicking still confirms the morph
+// immediately, same as before.
+function MorphIcon({ type, color }: { type:PieceType12; color:PlayerColor }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <>{EMOJI[type]}</>;
+  return <img src={pieceImagePath({ type, color } as Piece12)} alt={type} onError={() => setFailed(true)}
+    style={{ width:"84%", height:"84%", objectFit:"contain", pointerEvents:"none" }}/>;
+}
+
+function MorphOptionCard({ type, myColor, info, onPick }: {
+  type:PieceType12; myColor:PlayerColor; info:{name:string;move:string;special:string}; onPick:()=>void;
+}) {
+  const [hot, setHot] = useState(false);
+  return (
+    <button
+      onClick={onPick}
+      onMouseEnter={() => setHot(true)}
+      onMouseLeave={() => setHot(false)}
+      style={{
+        display:"flex", flexDirection:"column", alignItems:"center", gap:4,
+        width:114, padding:"10px 8px", borderRadius:12, cursor:"pointer",
+        WebkitTapHighlightColor:"transparent", textAlign:"center", fontFamily:"'Cinzel',Georgia,serif",
+        transition:"all .18s ease", transform: hot ? "translateY(-2px) scale(1.03)" : "none",
+        background: hot ? "linear-gradient(145deg,rgba(212,168,67,.22),rgba(255,255,255,.05))" : "rgba(212,168,67,.08)",
+        border:`1px solid ${hot ? "rgba(212,168,67,.7)" : "rgba(212,168,67,.3)"}`,
+        boxShadow: hot ? "0 10px 24px rgba(0,0,0,.5), 0 0 16px rgba(212,168,67,.3)" : "none",
+      }}
+    >
+      <span style={{ width:44, height:44, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", background:"#050505", border:"1px solid rgba(255,255,255,.14)", overflow:"hidden", flexShrink:0 }}>
+        <MorphIcon type={type} color={myColor}/>
+      </span>
+      <span style={{ fontSize:11, fontWeight:800, color:"#e8dfc0", letterSpacing:".03em" }}>{info.name}</span>
+      <span style={{ fontSize:9, color: hot ? "#8fd3ff" : "rgba(143,211,255,.65)", lineHeight:1.4 }}>⚔ {info.move}</span>
+      <span style={{ fontSize:9, color: hot ? "#f0c040" : "rgba(240,192,64,.65)", lineHeight:1.4 }}>✦ {info.special}</span>
+    </button>
+  );
+}
+
 // ─── SPECIAL PANEL ────────────────────────────────────────────────────────────
 function SpecialPanel({gs,myColor,onAction,onCancel}:{gs:GameState12;myColor:PlayerColor;onAction:(a:string,d?:any)=>void;onCancel:()=>void}){
   const ac=AC[myColor];
@@ -259,10 +324,8 @@ function SpecialPanel({gs,myColor,onAction,onCancel}:{gs:GameState12;myColor:Pla
   const wizSq=findWizard(gs.board,myColor);
   const spL=sorcSq&&gs.board[sorcSq.row][sorcSq.col]?gs.board[sorcSq.row][sorcSq.col]!.sorceressSpellsLeft:0;
   const hasSorc=spL>0; const hasWiz=!!wizSq;
-  let hasWarlock=false;
-  for(let r=0;r<12;r++)for(let c=0;c<12;c++){const p=gs.board[r][c];if(p&&p.type==="warlock"&&p.color===myColor&&!p.warlockBindUsed){hasWarlock=true;break;}}
-  let hasThief=false;
-  for(let r=0;r<12;r++)for(let c=0;c<12;c++){if(getThiefStealTargets(gs.board,r,c,myColor).length>0){hasThief=true;break;}}
+  const kingSq=findKing12(gs.board,myColor);
+  const hasKingMorph=!!kingSq&&hasWiz;
   const findMNQ=()=>{
     let q:Square12|null=null;
     for(let r=0;r<12;r++)for(let c=0;c<12;c++)if(gs.board[r][c]?.type==="super-queen"&&gs.board[r][c]?.color===myColor)q={row:r,col:c};
@@ -273,36 +336,37 @@ function SpecialPanel({gs,myColor,onAction,onCancel}:{gs:GameState12;myColor:Pla
     return null;
   };
   const mNQ=findMNQ();
-  if(!hasSorc&&!hasWiz&&!hasWarlock&&!hasThief&&!mNQ&&!gs.spellMessage)return null;
+  if(!hasSorc&&!hasWiz&&!hasKingMorph&&!mNQ&&!gs.spellMessage)return null;
   const btn=(bg:string,border:string,color:string)=>({padding:"8px 14px",borderRadius:10,background:bg,border:`1px solid ${border}`,color,fontSize:11,cursor:"pointer",fontWeight:700,transition:"all .2s",boxShadow:`0 4px 16px ${bg}80`});
+  // Only the Sorceress's third spell — the Wish — is dice-gated in the
+  // reference rules; every other spell/special action here is guaranteed.
+  const morphTargets:PieceType12[]=["super-queen","dragon","gargoyle","sorceress","super-knight","assassin","executioner","cavalier","mage","elvin-archer","paladin"];
   return(
     <div style={{position:"relative",zIndex:20,background:"rgba(4,2,0,.96)",backdropFilter:"blur(24px)",border:`1px solid ${ac}28`,borderRadius:20,padding:"14px 22px",width:"min(520px,95vw)",margin:"4px auto 0",boxShadow:`0 0 50px ${GL[myColor]},0 24px 60px rgba(0,0,0,.85)`}}>
       {gs.spellMessage&&<p style={{margin:"0 0 10px",fontSize:13,color:ac,fontWeight:700,textAlign:"center",letterSpacing:".04em"}}>✨ {gs.spellMessage}</p>}
-      {gs.wishDiceResult!==null&&gs.specialMode===null&&(
+      {gs.wishDiceResult!==null&&(
         <div style={{padding:"10px 18px",borderRadius:12,background:gs.wishDiceResult>5?"rgba(125,189,110,.12)":"rgba(255,80,80,.12)",border:`1px solid ${gs.wishDiceResult>5?"rgba(125,189,110,.3)":"rgba(255,80,80,.3)"}`,textAlign:"center",marginBottom:10}}>
           <p style={{margin:0,fontSize:24,fontWeight:700,color:gs.wishDiceResult>5?"#7dbd6e":"#ff8080"}}>🎲 {gs.wishDiceResult}/10</p>
           <p style={{margin:"4px 0 8px",fontSize:12,color:"rgba(180,140,60,.6)"}}>{gs.wishDiceResult>5?"✅ Wish Granted!":"❌ Wish Failed — Turn Lost"}</p>
           {gs.wishDiceResult>5?<button onClick={()=>onAction("wish-success")} style={btn("rgba(125,189,110,.2)","rgba(125,189,110,.4)","#7dbd6e")}>Claim Wish →</button>:<button onClick={()=>onAction("wish-fail")} style={btn("rgba(255,80,80,.1)","rgba(255,80,80,.3)","#ff8080")}>End Turn</button>}
         </div>
       )}
-      {gs.wishDiceResult!==null&&gs.specialMode!==null&&(
-        <div style={{padding:"10px 18px",borderRadius:12,background:gs.wishDiceResult>5?"rgba(125,189,110,.12)":"rgba(255,80,80,.12)",border:`1px solid ${gs.wishDiceResult>5?"rgba(125,189,110,.3)":"rgba(255,80,80,.3)"}`,textAlign:"center",marginBottom:10}}>
-          <p style={{margin:0,fontSize:24,fontWeight:700,color:gs.wishDiceResult>5?"#7dbd6e":"#ff8080"}}>🎲 {gs.wishDiceResult}/10</p>
-          <p style={{margin:"4px 0 8px",fontSize:12,color:"rgba(180,140,60,.6)"}}>{gs.wishDiceResult>5?"✅ Spell Succeeded!":"❌ Spell Failed — cost paid, turn lost"}</p>
-          {gs.wishDiceResult>5?<button onClick={()=>onAction("spell-dice-success")} style={btn("rgba(125,189,110,.2)","rgba(125,189,110,.4)","#7dbd6e")}>Confirm →</button>:<button onClick={()=>onAction("spell-dice-fail")} style={btn("rgba(255,80,80,.1)","rgba(255,80,80,.3)","#ff8080")}>End Turn</button>}
+      {gs.specialMode==="mystic-king-morph-select"&&(
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center",marginBottom:6}}>
+          {morphTargets.map(t=>(
+            <MorphOptionCard key={t} type={t} myColor={myColor} info={PIECE_INFO[t]} onPick={()=>onAction("king-morph-confirm",{type:t})}/>
+          ))}
         </div>
       )}
-      {!gs.specialMode&&!gs.wishDiceResult&&(
+      {!gs.specialMode&&gs.wishDiceResult===null&&(
         <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
           {hasSorc&&<><button onClick={()=>onAction("spell-sleep")} style={btn("rgba(80,60,200,.2)","rgba(80,60,200,.4)","#9090ff")}>😴 Sleep ({spL})</button><button onClick={()=>onAction("spell-teleport")} style={btn("rgba(180,60,200,.2)","rgba(180,60,200,.4)","#d080ff")}>🌀 Teleport</button><button onClick={()=>onAction("spell-wish")} style={btn("rgba(200,160,20,.2)","rgba(200,160,20,.4)","#f0c040")}>⭐ Wish</button></>}
           {hasWiz&&<button onClick={()=>onAction("wizard-teleport")} style={btn("rgba(60,150,200,.2)","rgba(60,150,200,.4)","#60c0f0")}>🧙 Wizard Teleport</button>}
-          {hasWiz&&<button onClick={()=>onAction("wizard-bind")} style={btn("rgba(40,140,220,.2)","rgba(40,140,220,.4)","#7fd0ff")}>❄️ Bind Spell</button>}
-          {hasWarlock&&<button onClick={()=>onAction("warlock-bind")} style={btn("rgba(100,60,200,.2)","rgba(100,60,200,.4)","#a080ff")}>⛓️ Warlock Bind</button>}
-          {hasThief&&<button onClick={()=>onAction("thief-steal")} style={btn("rgba(160,120,20,.2)","rgba(160,120,20,.4)","#e0c080")}>🗝️ Thief Steal</button>}
+          {hasKingMorph&&<button onClick={()=>onAction("king-morph")} style={btn("rgba(212,168,67,.2)","rgba(212,168,67,.4)","#e8dfc0")}>🔮 King's Last Wish</button>}
           {mNQ&&<button onClick={()=>onAction("mage-sacrifice",mNQ)} style={btn("rgba(200,80,80,.2)","rgba(200,80,80,.4)","#ff9090")}>💫 Mage Sacrifice</button>}
         </div>
       )}
-      {gs.specialMode&&!gs.wishDiceResult&&<div style={{display:"flex",justifyContent:"center",marginTop:10}}><button onClick={onCancel} style={{padding:"6px 18px",borderRadius:9,background:"rgba(255,80,80,.1)",border:"1px solid rgba(255,80,80,.25)",color:"#ff8080",fontSize:12,cursor:"pointer",fontWeight:700}}>✕ Cancel</button></div>}
+      {gs.specialMode&&gs.wishDiceResult===null&&<div style={{display:"flex",justifyContent:"center",marginTop:10}}><button onClick={onCancel} style={{padding:"6px 18px",borderRadius:9,background:"rgba(255,80,80,.1)",border:"1px solid rgba(255,80,80,.25)",color:"#ff8080",fontSize:12,cursor:"pointer",fontWeight:700}}>✕ Cancel</button></div>}
     </div>
   );
 }
@@ -455,42 +519,32 @@ export default function Board12x12({myColor,roomId,playerNames,socket,onGameEnd}
     if(action==="spell-sleep"){ns={...cloneState12(state),specialMode:"sorceress-sleep-select",spellMessage:"Click any enemy piece to sleep (3 rounds)"};}
     else if(action==="spell-teleport"){ns={...cloneState12(state),specialMode:"sorceress-teleport-select",spellMessage:"Click any piece to teleport it"};}
     else if(action==="spell-wish"){
+      // The Wish is the ONLY dice-gated spell in the reference rules.
       const roll=rollWishDice();ns=cloneState12(state);ns.wishDiceResult=roll;
       const sSq=findSorceress(state.board,myColor);
       if(sSq){const s=ns.board[sSq.row][sSq.col]!;const nsp=s.sorceressSpellsLeft-1;if(nsp<=0)ns.board[sSq.row][sSq.col]=null;else ns.board[sSq.row][sSq.col]={...s,sorceressSpellsLeft:nsp};}
       setSpellEffect("wish");
     }else if(action==="wizard-teleport"){ns={...cloneState12(state),specialMode:"wizard-teleport-select-piece",spellMessage:"Click any piece to teleport via Wizard"};}
-    else if(action==="wizard-bind"){ns={...cloneState12(state),specialMode:"wizard-bind-select",spellMessage:"❄️ Click any enemy piece to bind it (3 rounds)"};}
-    else if(action==="thief-steal"){
-      let pieceSq:Square12|null=null;
-      for(let r=0;r<12;r++)for(let c=0;c<12;c++)if(state.board[r][c]?.type==="thief"&&state.board[r][c]?.color===myColor)pieceSq={row:r,col:c};
-      ns={...cloneState12(state),specialMode:"thief-steal-jump",specialData:{pieceSq},spellMessage:"🗝️ Click a piece within reach to steal it (not the King)"};
+    else if(action==="king-morph"){
+      ns={...cloneState12(state),specialMode:"mystic-king-morph-select",spellMessage:"🔮 Choose what the King morphs into — the Wizard gives his life for this"};
     }
-    else if(action==="warlock-bind"){
-      // Warlock's bind-all is a distinct, separate ability from the Wizard's
-      // new Bind Spell — kept exactly as-is, no dice check (not in scope).
-      ns=applyWarlockBind(cloneState12(state),myColor);snd("spell");setSpellEffect("teleport");
-      ns=advanceTurn(ns);
+    else if(action==="king-morph-confirm"&&data){
+      const kingSq=findKing12(state.board,myColor); const wizSq=findWizard(state.board,myColor);
+      if(!kingSq||!wizSq){ns=advanceTurn(cloneState12(state));}
+      else{
+        const board=applyKingMorph(state.board,kingSq,wizSq,data.type);
+        ns=advanceTurn({...cloneState12(state),board});
+        snd("spell");setSpellEffect("teleport");
+      }
     }
     else if(action==="mage-sacrifice"&&data){
-      const roll=rollWishDice();
-      const successBoard=applyMageSacrifice(state.board,data.mageSq,data.queenSq);
-      const failBoard=consumeMageOnly(state.board,data.mageSq);
-      ns={...cloneState12(state),wishDiceResult:roll,specialMode:"mage-sacrifice-pending",
-        specialData:{successBoard,failBoard,effectType:"teleport"},
-        spellMessage:roll>5?"💫 Mage Sacrifice succeeds!":"💫 Mage Sacrifice roll..."};
+      // Touch-triggered, guaranteed — no dice roll in the reference rules.
+      const board=applyMageSacrifice(state.board,data.mageSq,data.queenSq);
+      ns=advanceTurn({...cloneState12(state),board});
+      snd("spell");setSpellEffect("teleport");
     }
     else if(action==="wish-success"){ns={...cloneState12(state),wishDiceResult:null,specialMode:"wizard-teleport-select-piece",spellMessage:"Wish granted! Move any piece anywhere"};}
     else if(action==="wish-fail"){ns=advanceTurn(cloneState12(state));}
-    else if(action==="spell-dice-success"){
-      const b=state.specialData?.successBoard;
-      ns=b?advanceTurn({...cloneState12(state),board:b}):advanceTurn(cloneState12(state));
-      setSpellEffect(state.specialData?.effectType||null);
-    }
-    else if(action==="spell-dice-fail"){
-      const b=state.specialData?.failBoard;
-      ns=advanceTurn({...cloneState12(state),board:b||state.board});
-    }
     else return;
     setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
     if(ns.status==="finished"&&ns.winner){setTimeout(()=>{setShowWin(ns.winner);snd("win");},400);onGameEnd?.(ns.winner!);}
@@ -512,51 +566,33 @@ export default function Board12x12({myColor,roomId,playerNames,socket,onGameEnd}
     snd("click");
 
     if(specialMode==="sorceress-sleep-select"){
+      // Sleep is guaranteed, per the reference — no dice roll.
       if(cp&&cp.color!==myColor){
         const sSq=findSorceress(board,myColor)!;
-        const successBoard=applySleepSpell(board,sq,sSq);
-        const failBoard=consumeSorceressCharge(board,sSq);
-        const roll=rollWishDice();
-        const ns={...cloneState12(state),wishDiceResult:roll,specialData:{successBoard,failBoard,effectType:"sleep"},
-          spellMessage:roll>5?"😴 Sleep Spell succeeds!":"😴 Sleep Spell roll..."};
+        const nb=applySleepSpell(board,sq,sSq);
+        const ns=advanceTurn({...cloneState12(state),board:nb});
+        snd("spell");setSpellEffect("sleep");
         setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
       }return;
     }
     if(specialMode==="sorceress-teleport-select"){
+      // Teleport (Sorceress) is guaranteed, per the reference — no dice roll.
       if(!state.specialData){if(cp)setGs({...cloneState12(state),specialData:{pieceSq:sq},spellMessage:"Now click destination square."});return;}
       if(!cp||cp.color!==myColor){
         const sSq=findSorceress(board,myColor)!;
-        const successBoard=applyTeleportSpell(board,state.specialData.pieceSq,sq,sSq);
-        const failBoard=consumeSorceressCharge(board,sSq);
-        const roll=rollWishDice();
-        const ns={...cloneState12(state),wishDiceResult:roll,specialData:{successBoard,failBoard,effectType:"teleport"},
-          spellMessage:roll>5?"🌀 Teleport Spell succeeds!":"🌀 Teleport Spell roll..."};
+        const nb=applyTeleportSpell(board,state.specialData.pieceSq,sq,sSq);
+        const ns=advanceTurn({...cloneState12(state),board:nb});
+        snd("spell");setSpellEffect("teleport");
         setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
       }return;
     }
     if(specialMode==="wizard-teleport-select-piece"){if(cp)setGs({...cloneState12(state),specialMode:"wizard-teleport-select-dest",specialData:{pieceSq:sq},spellMessage:"Now click destination."});return;}
     if(specialMode==="wizard-teleport-select-dest"){
+      // Wizard Teleport is guaranteed, per the reference — no dice roll.
       if(!cp){
-        const successBoard=applyWizardTeleport(board,state.specialData.pieceSq,sq);
-        const roll=rollWishDice();
-        const ns={...cloneState12(state),wishDiceResult:roll,specialData:{successBoard,failBoard:board,effectType:"teleport"},
-          spellMessage:roll>5?"🧙 Wizard Teleport succeeds!":"🧙 Wizard Teleport roll..."};
-        setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
-      }return;
-    }
-    if(specialMode==="wizard-bind-select"){
-      if(cp&&cp.color!==myColor){
-        const successBoard=applyBindSpell(board,sq);
-        const roll=rollWishDice();
-        const ns={...cloneState12(state),wishDiceResult:roll,specialData:{successBoard,failBoard:board,effectType:"sleep"},
-          spellMessage:roll>5?"❄️ Bind Spell succeeds!":"❄️ Bind Spell roll..."};
-        setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
-      }return;
-    }
-    if(specialMode==="thief-steal-jump"){
-      const pieceSq=state.specialData?.pieceSq;
-      if(pieceSq&&getThiefStealTargets(board,pieceSq.row,pieceSq.col,myColor).some(s=>sq12Eq(s,sq))){
-        const ns=applyThiefSteal(state,pieceSq,sq);snd("spell");setSpellEffect("teleport");
+        const nb=applyWizardTeleport(board,state.specialData.pieceSq,sq);
+        const ns=advanceTurn({...cloneState12(state),board:nb});
+        snd("spell");setSpellEffect("teleport");
         setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
       }return;
     }
@@ -582,7 +618,7 @@ export default function Board12x12({myColor,roomId,playerNames,socket,onGameEnd}
       if(ns.status==="finished"&&ns.winner){setTimeout(()=>{setShowWin(ns.winner);snd("win");},400);onGameEnd?.(ns.winner!);}
       return;
     }
-    if(cp&&cp.color===myColor&&cp.sleepRoundsLeft===0&&cp.boundRoundsLeft===0){snd("select");const moves=getLegalMoves12(board,row,col,state.turnOrder);setGs(prev=>({...prev,selectedSquare:sq,validMoves:moves}));return;}
+    if(cp&&cp.color===myColor&&cp.sleepRoundsLeft===0){snd("select");const moves=getLegalMoves12(board,row,col,state.turnOrder);setGs(prev=>({...prev,selectedSquare:sq,validMoves:moves}));return;}
     setGs(prev=>({...prev,selectedSquare:null,validMoves:[]}));
   },[myColor,roomId,socket,onGameEnd,isElim]);
 
@@ -706,8 +742,6 @@ const cols=[...Array(12)].map((_,i)=>i);
                   const isRisky=!!riskySq&&sq12Eq(riskySq,sq);
                   const zone=getZone(row,col);
                   const isAxeT=gs.specialMode==="executioner-axe-swing"&&gs.pendingAxeSquare&&getAxeSwingSquares(gs.board,gs.pendingAxeSquare.row,gs.pendingAxeSquare.col,myColor).some(s=>sq12Eq(s,sq));
-                  const isThiefT=gs.specialMode==="thief-steal-jump"&&gs.specialData?.pieceSq&&getThiefStealTargets(gs.board,gs.specialData.pieceSq.row,gs.specialData.pieceSq.col,myColor).some(s=>sq12Eq(s,sq));
-                  const isBindT=gs.specialMode==="wizard-bind-select"&&piece&&piece.color!==myColor;
                   const baseBg=isLight?"#cdb088":"#553618";
                   let ov="";
                   if(isSel)ov="rgba(212,168,67,.55)";
@@ -716,18 +750,14 @@ const cols=[...Array(12)].map((_,i)=>i);
                   else if(isRisky)ov="rgba(255,60,60,.25)";
                   else if(isLF||isLT)ov="rgba(212,168,67,.2)";
                   else if(isAxeT)ov="rgba(255,80,0,.45)";
-                  else if(isThiefT)ov="rgba(200,40,140,.4)";
-                  else if(isBindT)ov="rgba(80,180,255,.4)";
                   return(
                     <div key={`${row}-${col}`} className="sq" onClick={()=>handleClick(row,col)} style={{width:sqSize,height:sqSize,background:baseBg}}>
                       <div style={{position:"absolute",inset:0,zIndex:0,pointerEvents:"none",background:isLight?"linear-gradient(135deg,rgba(255,255,255,.1) 0%,transparent 55%)":"linear-gradient(135deg,rgba(255,255,255,.04) 0%,rgba(0,0,0,.2) 100%)"}}/>
                       {zone&&!isSel&&!isChk&&!ov&&<div style={{position:"absolute",inset:0,zIndex:0,background:ZONE[zone],pointerEvents:"none"}}/>}
                       {ov&&<div style={{position:"absolute",inset:0,zIndex:1,background:ov,pointerEvents:"none"}}/>}
                       {piece&&piece.sleepRoundsLeft>0&&<div style={{position:"absolute",top:1,right:2,zIndex:5,fontSize:sqSize*.23,animation:"sleepBob 2s ease-in-out infinite",pointerEvents:"none"}}>💤</div>}
-                      {piece&&piece.boundRoundsLeft>0&&<div style={{position:"absolute",top:1,left:2,zIndex:5,fontSize:sqSize*.23,pointerEvents:"none"}}>⛓️</div>}
                       {isValid&&!piece&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:sqSize*.3,height:sqSize*.3,borderRadius:"50%",background:"rgba(212,168,67,.68)",boxShadow:"0 0 14px rgba(212,168,67,.5)",animation:"dotPop .14s ease both",pointerEvents:"none",zIndex:4}}/>}
                       {isValid&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"3px solid rgba(212,168,67,.82)",borderRadius:3,boxShadow:"inset 0 0 8px rgba(212,168,67,.25)",animation:"dotPop .14s ease both",pointerEvents:"none"}}/>}
-                      {(isThiefT||isBindT)&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:`3px solid ${isThiefT?"rgba(200,40,140,.9)":"rgba(80,180,255,.9)"}`,borderRadius:3,pointerEvents:"none"}}/>}
                       {isAxeT&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"3px solid rgba(255,80,0,.85)",borderRadius:3,animation:"dotPop .14s ease both",pointerEvents:"none"}}/>}
                       {isGreat&&<div style={{position:"absolute",inset:0,zIndex:4,borderRadius:3,border:"2px solid rgba(255,215,0,.6)",boxShadow:"inset 0 0 16px rgba(255,215,0,.2)",pointerEvents:"none"}}/>}
                       {isRisky&&<div style={{position:"absolute",inset:0,zIndex:4,borderRadius:3,border:"2px solid rgba(255,60,60,.6)",boxShadow:"inset 0 0 16px rgba(255,60,60,.2)",pointerEvents:"none"}}/>}
@@ -781,10 +811,9 @@ const cols=[...Array(12)].map((_,i)=>i);
                   ["🧠","Player Strategy","Develop your pieces early and control the center of the board. Use powerful units wisely and avoid exposing important characters too soon."],
                   ["🛡️","Defensive Play","If you are losing pieces, switch to defensive positioning. Protect key units and look for counter-attacks instead of direct engagement."],
                   ["🔥","Endgame Strategy","In the final phase, focus on trapping remaining enemy pieces. Coordinate your units to restrict movement and finish the game efficiently."],
-                  ["🌑","Warlock","Ethereal, moves like the Sorceress. Must move first, then binds ALL enemy pieces for 1 full round — they cannot move. One use only, no dice roll."],
-                  ["🗝️","Thief","Triple jump (2-3 squares in any direction, ignoring blockers) to steal any piece ONCE — not the King. No dice roll."],
-                  ["❄️","Wizard Bind Spell","Separate from Warlock's ability: the Wizard can freeze ONE enemy piece for 3 rounds. Unlimited casts, but each cast requires a dice roll."],
-                  ["🎲","Spell Dice","Sleep, Teleport, Wizard Teleport, Bind Spell & Mage Sacrifice all require a d10 roll above 5 to succeed. On a failed roll the spell's cost is still paid but nothing happens — your turn ends."],
+                  ["🧙","Wizard & Sorceress","Ethereal — they cannot kill regular pieces, and only a Wizard or Sorceress can kill a Wizard or Sorceress. Everyone else's moves treat them as a wall."],
+                  ["🔮","King's Last Wish","If the King's Wizard is still alive, the King may ask him to morph into any other piece — ending the Wizard's life for one last fighting chance."],
+                  ["🎲","Spell Dice","Only the Sorceress's Wish spell requires a d10 roll above 5 to succeed — on a failed roll her charge is still spent but nothing happens and your turn ends. Every other spell (Sleep, Teleport, Wizard Teleport, Mage Sacrifice) is guaranteed."],
                   ["🏳️","Forfeit Rule","If a player quits the match, the opponent is automatically declared the winner."],
                 ].map(([icon,title,desc])=>(
                   <div key={title} className="rule-card">

@@ -311,12 +311,13 @@ export function MontageSection() {
 
           <div className={cn("w-full transition-all duration-400", isTransitioning ? "opacity-0 translate-x-8" : "opacity-100 translate-x-0")}>
             <div className="hidden sm:block font-serif text-9xl leading-none mb-4 select-none" style={{ color: "rgba(201,168,76,0.06)" }}>{String(currentIndex + 1).padStart(2, "0")}</div>
-            <h3 className="font-serif text-3xl sm:text-4xl md:text-5xl mb-4" style={{ color: "#c9a84c", textShadow: "0 0 30px rgba(201,168,76,0.3)", marginTop: "-40px" }}>{current.name}</h3>
+            <h3 className="font-serif text-3xl sm:text-4xl md:text-5xl mb-4 mt-0 sm:-mt-10" style={{ color: "#c9a84c", textShadow: "0 0 30px rgba(201,168,76,0.3)" }}>{current.name}</h3>
             <div style={{ width: "60px", height: "2px", background: "linear-gradient(90deg, #c9a84c, transparent)", marginBottom: "20px" }} />
             <p className="text-lg sm:text-xl md:text-2xl font-mono italic mb-6" style={{ color: "rgba(201,168,76,0.7)" }}>"{current.tagline}"</p>
             <p className="text-base sm:text-lg leading-relaxed mb-6 sm:mb-8" style={{ color: "rgba(232,223,200,0.55)" }}>{current.description}</p>
-            <div className="inline-flex items-center gap-3 px-4 sm:px-5 py-3 rounded mb-8 sm:mb-10" style={{ background: "rgba(201,168,76,0.05)", border: "1px solid rgba(201,168,76,0.2)", color: "#c9a84c", fontFamily: "monospace", fontSize: "13px", letterSpacing: "2px" }}>
-              <span style={{ opacity: 0.6 }}>⚡</span>{current.ability}
+            <div className="inline-flex items-center gap-3 px-4 sm:px-5 py-3 rounded mb-8 sm:mb-10 max-w-full" style={{ background: "rgba(201,168,76,0.05)", border: "1px solid rgba(201,168,76,0.2)", color: "#c9a84c", fontFamily: "monospace", fontSize: "13px", letterSpacing: "2px" }}>
+              <span style={{ opacity: 0.6, flexShrink: 0 }}>⚡</span>
+              <span style={{ minWidth: 0, wordBreak: "break-word" }}>{current.ability}</span>
             </div>
 
             {/* Controls */}

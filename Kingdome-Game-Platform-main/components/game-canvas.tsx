@@ -172,6 +172,21 @@ export function GameCanvas() {
   const boardRef = useRef<Sq[][]>(board)
   boardRef.current = board
 
+  // Square size in px — computed from viewport width so the 8x8 grid always
+  // fits inside the screen (section px-4 + board padding + rank labels + grid
+  // gaps eat ~110px around the grid; 70px is the original desktop cap).
+  const [sqPx, setSqPx] = useState(70)
+  useEffect(() => {
+    const calcSq = () => {
+      const chrome = 110
+      const size = (window.innerWidth - chrome) / 8
+      setSqPx(Math.min(70, Math.max(20, size)))
+    }
+    calcSq()
+    window.addEventListener("resize", calcSq)
+    return () => window.removeEventListener("resize", calcSq)
+  }, [])
+
   useEffect(()=>{if(logRef.current)logRef.current.scrollTop=logRef.current.scrollHeight},[log])
   useEffect(()=>{if(check){const t=setTimeout(()=>setCheck(false),900);return()=>clearTimeout(t)}},[check])
 
@@ -450,7 +465,7 @@ export function GameCanvas() {
                 <div style={{display:"flex",alignItems:"stretch"}}>
                   {/* Left ranks */}
                   <div style={{display:"flex",flexDirection:"column",marginRight:4}}>
-                    {ranks.map(r=><div key={r} style={{flex:1,display:"flex",alignItems:"center",fontSize:9,color:"rgba(201,168,76,0.3)",fontFamily:"monospace",minHeight:"clamp(44px,8vw,70px)"}}>{r}</div>)}
+                    {ranks.map(r=><div key={r} style={{flex:1,display:"flex",alignItems:"center",fontSize:9,color:"rgba(201,168,76,0.3)",fontFamily:"monospace",minHeight:sqPx}}>{r}</div>)}
                   </div>
 
                   <div>
@@ -471,7 +486,7 @@ export function GameCanvas() {
                         else if(isLT)   bg=gold?"rgba(234,197,8,0.85)":"rgba(201,168,76,0.35)"
                         else if(isLF)   bg=gold?"rgba(201,168,76,0.6)":"rgba(201,168,76,0.18)"
 
-                        const sz="clamp(44px,8vw,70px)"
+                        const sz=sqPx
                         return(
                           <button key={`${rIdx}-${cIdx}`} onClick={()=>click(rIdx,cIdx)}
                             disabled={!!over||!!superQ||!!retrieveQ||thinking}
@@ -524,7 +539,7 @@ src={`/pieces/${p.color}/${p.type.charAt(0).toUpperCase() + p.type.slice(1)}.png
 
                   {/* Right ranks */}
                   <div style={{display:"flex",flexDirection:"column",marginLeft:4}}>
-                    {ranks.map(r=><div key={r} style={{flex:1,display:"flex",alignItems:"center",fontSize:9,color:"rgba(201,168,76,0.3)",fontFamily:"monospace",minHeight:"clamp(44px,8vw,70px)"}}>{r}</div>)}
+                    {ranks.map(r=><div key={r} style={{flex:1,display:"flex",alignItems:"center",fontSize:9,color:"rgba(201,168,76,0.3)",fontFamily:"monospace",minHeight:sqPx}}>{r}</div>)}
                   </div>
                 </div>
               </div>

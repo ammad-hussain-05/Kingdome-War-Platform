@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import type { GameState, Square, Color } from "@/lib/game/rules-8x8";
+import type { GameState, Square, Color, PieceType } from "@/lib/game/rules-8x8";
 import {
-  createInitialGameState, getLegalMoves, getLegalSuperMoves,
-  executeMove, passTurn, squareEquals,
+  createInitialGameState, getLegalMoves, getLegalSuperMoves, getLegalCastleMoves,
+  executeMove, executeCastle, passTurn, retrieveCapturedPiece, skipRetrieve, squareEquals,
 } from "@/lib/game/rules-8x8";
 import Fireworks from "@/components/game/fireworks";
 
@@ -27,6 +27,24 @@ const PIECE_IMAGES: Record<string,string> = {
 const PIECE_NAMES: Record<string,string> = {
   king:"King", queen:"Queen", rook:"Rook", bishop:"Bishop", knight:"Knight", paladin:"Paladin"
 };
+
+// Rules-panel icons use the single-portrait art in public/all-characters —
+// no color variant needed since these badges are purely illustrative.
+const RULE_ICON_SRC: Record<string,string> = {
+  king: "/all-characters/King.png",
+  queen: "/all-characters/Queen.png",
+  bishop: "/all-characters/Bishop.png",
+  rook: "/all-characters/Rook.png",
+  knight: "/all-characters/Knight.png",
+  paladin: "/all-characters/Paladin.png",
+};
+function RulePieceIcon({ pieceKey, fallback }: { pieceKey:string; fallback:string }) {
+  const [failed, setFailed] = useState(false);
+  const src = RULE_ICON_SRC[pieceKey];
+  if (failed || !src) return <>{fallback}</>;
+  return <img src={src} alt={pieceKey} onError={() => setFailed(true)}
+    style={{ width:"82%", height:"82%", objectFit:"contain", pointerEvents:"none" }}/>;
+}
 
 // ─── SOUND ────────────────────────────────────────────────────────────────────
 function snd(type: string) {
@@ -306,40 +324,14 @@ function PlayerCard({ name, color, isMe, isActive, isCheck, captured }: {
 }
 
 // ─── ACTION PANEL ─────────────────────────────────────────────────────────────
-function ActionPanel({ isMyTurn, check, myColor, selectedIsPaladin, paladanSuperUsed, superMoveMode, passUsed, onSuperAttack, onPass, turnTimer, onTimerExpire }: {
-  
+function ActionPanel({ isMyTurn, check, myColor, selectedIsPaladin, paladanSuperUsed, superMoveMode, passUsed, onSuperAttack, onPass }: {
   isMyTurn:boolean; check:Color|null; myColor:Color;
   selectedIsPaladin:boolean; paladanSuperUsed:boolean; superMoveMode:boolean;
   passUsed:boolean; onSuperAttack:()=>void; onPass:()=>void;
-   turnTimer: number;  // Type for turnTimer
-   onTimerExpire: () => void;  // Type for onTimerExpire
-  
 }) {
-  console.log("isMyTurn:", isMyTurn);
   const inCheck = check === myColor;
   const ac = myColor === "white" ? "#e8dfc0" : "#c8a96e";
 
-   // Timer handling within the component for visual display
-  const [timer, setTimer] = useState(turnTimer);
-
-// 🔥 NEW: reset timer when turn changes
-useEffect(() => {
-  if (!isMyTurn) return;
-
-  const interval = setInterval(() => {
-    setTimer((prev) => {
-      if (prev <= 1) {
-        clearInterval(interval);
-        onTimerExpire(); // 🔥 turn pass
-        return 0;
-      }
-      return prev - 1;
-    });
-  }, 1000);
-
-  return () => clearInterval(interval);
-}, [isMyTurn]);
-  
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
       {/* Turn status */}
@@ -359,20 +351,6 @@ useEffect(() => {
           </p>
         </div>
       </div>
-
-         {/* Timer display */}
-      {isMyTurn && (
-  <div
-    style={{
-      marginTop: 10,
-      fontSize: 18,
-      fontWeight: 700,
-      color: timer <= 5 ? "red" : "#ffdb4d"
-    }}
-  >
-    Time Remaining: {timer}s
-  </div>
-)}
 
       {/* Super Attack */}
      {/* Paladin Super Attack */}
@@ -530,15 +508,112 @@ useEffect(() => {
         color: passUsed ? "#aaa" : "#ccc", // Lighter text for secondary info
       }}
     >
-      {passUsed
-        ? "Mexican Standoff spent"
-        : isMyTurn
-        ? "Skip once this match"
+      {isMyTurn
+        ? "Mexican Standoff — skip anytime"
         : "Available on your turn"}
     </p>
   </div>
 </button>
 
+    </div>
+  );
+}
+
+
+// ─── BATTLE GUIDE (right panel) ────────────────────────────────────────────────
+// A quick-reference popover matching the 12x12/16x16 Battle Guide: real piece
+// art from public/all-characters, one card per piece actually in this match,
+// hover (desktop) or tap (mobile) highlights that piece's abilities. This is
+// separate from the "Game Rules" modal (left panel), which stays the full
+// rulebook.
+const PIECE_GUIDE_INFO: Record<PieceType, { name:string; move:string; special:string }> = {
+  king:    { name:"King",    move:"1 square in any direction",                 special:"Capturing him doesn't end the game — the fight goes on until an army is fully eliminated" },
+  queen:   { name:"Queen",   move:"Unlimited squares — straight or diagonal",  special:"Your most powerful piece — commands entire ranks, files, and diagonals at once" },
+  bishop:  { name:"Bishop",  move:"Unlimited diagonal squares, any direction", special:"Stays on one square color for the whole game" },
+  rook:    { name:"Rook",    move:"Unlimited horizontal or vertical squares",  special:"Strongest on open files and ranks, especially late-game" },
+  knight:  { name:"Knight",  move:"L-shape: 2 squares + 1 side, jumps pieces", special:"The only piece that can jump over others" },
+  paladin: { name:"Paladin", move:"1 square in any direction",                 special:"Super Strike: 2–3 sq attack once · Reverse Castle: swap with an ally · Back Rank: retrieve a captured piece" },
+};
+
+function BattleGuideCard8x8({ pieceKey, info, has }: { pieceKey:PieceType; info:{name:string;move:string;special:string}; has:boolean }) {
+  const [hot, setHot] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHot(true)}
+      onMouseLeave={() => setHot(false)}
+      onClick={() => setHot(h => !h)}
+      style={{
+        padding:"10px 11px", borderRadius:14, cursor:"pointer", WebkitTapHighlightColor:"transparent",
+        transition:"all .2s ease", transform: hot ? "translateY(-2px) scale(1.015)" : "none",
+        background: hot
+          ? "linear-gradient(145deg,rgba(212,168,67,.2),rgba(255,255,255,.05))"
+          : has ? "linear-gradient(145deg,rgba(255,255,255,.08),rgba(255,255,255,.02))" : "linear-gradient(145deg,rgba(255,255,255,.03),rgba(255,255,255,.01))",
+        border:`1px solid ${hot ? "rgba(212,168,67,.65)" : has ? "rgba(255,255,255,.14)" : "rgba(255,255,255,.06)"}`,
+        opacity: has ? 1 : .4,
+        boxShadow: hot
+          ? "0 14px 30px rgba(0,0,0,.55), 0 0 18px rgba(212,168,67,.28), inset 0 1px 0 rgba(255,255,255,.12)"
+          : has ? "0 8px 18px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.06)" : "none",
+      }}
+    >
+      <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:6 }}>
+        <span style={{ width:32, height:32, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, background:"#050505", border:"1px solid rgba(255,255,255,.12)", boxShadow:"inset 0 1px 0 rgba(255,255,255,.1), 0 6px 14px rgba(0,0,0,.6)", overflow:"hidden" }}>
+          <RulePieceIcon pieceKey={pieceKey} fallback="♟"/>
+        </span>
+        <p style={{ margin:0, fontSize:11.5, fontWeight:900, color:"#fff", textShadow:"0 2px 8px rgba(0,0,0,.8)", letterSpacing:".04em" }}>
+          {info.name}{!has ? " ✗" : ""}
+        </p>
+      </div>
+      <p style={{ margin:"0 0 3px", fontSize:9.5, color: hot ? "#fff" : "rgba(255,255,255,.8)", lineHeight:1.5 }}>
+        <span style={{ color:"#78d7ff" }}>⚔ Ability:</span> {info.move}
+      </p>
+      <p style={{ margin:0, fontSize:9.5, color: hot ? "#fff" : "rgba(255,255,255,.68)", lineHeight:1.5 }}>
+        <span style={{ color:"#ffd15c" }}>✦ Special:</span> {info.special}
+      </p>
+    </div>
+  );
+}
+
+function BattleGuide8x8({ myColor, gs }: { myColor:Color; gs:GameState }) {
+  const [open, setOpen] = useState(false);
+  const ac = myColor === "white" ? "#e8dfc0" : "#c8a96e";
+  const glow = myColor === "white" ? "rgba(232,223,192,0.4)" : "rgba(200,169,110,0.4)";
+  const myP = new Set<PieceType>();
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) { const p = gs.board[r][c]; if (p && p.color === myColor) myP.add(p.type); }
+
+  return (
+    <div style={{ position:"relative", width:"100%" }}>
+      <button
+        onClick={() => { setOpen(o => !o); snd("select"); }}
+        style={{
+          width:"100%", minHeight:50, padding:"11px 14px", borderRadius:14,
+          background: open ? "#050505" : "#000",
+          border:`1px solid ${open ? ac+"80" : ac+"45"}`,
+          color:"#fff", fontSize:11, cursor:"pointer", fontWeight:900,
+          letterSpacing:".13em", textTransform:"uppercase", fontFamily:"'Cinzel',Georgia,serif",
+          transition:"all .2s", display:"flex", alignItems:"center", justifyContent:"center", gap:9,
+          boxShadow: open ? `0 0 22px ${glow}, inset 0 1px 0 rgba(255,255,255,.12)` : "0 10px 22px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.08)",
+        }}
+      >
+        <span style={{ fontSize:16 }}>{open ? "✕" : "🧭"}</span>
+        <span>{open ? "Close Guide" : "Battle Guide"}</span>
+      </button>
+
+      {open && (
+        <div style={{ position:"absolute", bottom:"110%", right:0, zIndex:70, width:"min(290px,90vw)", maxHeight:"420px", overflowY:"auto", padding:16, borderRadius:20, background:"#000", border:"1px solid rgba(255,255,255,.16)", boxShadow:`0 30px 90px rgba(0,0,0,.95), inset 0 1px 0 rgba(255,255,255,.14), 0 0 0 1px ${ac}30`, animation:"tipIn .2s ease both" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14, paddingBottom:12, borderBottom:"1px solid rgba(255,255,255,.14)" }}>
+            <span style={{ width:36, height:36, borderRadius:13, display:"flex", alignItems:"center", justifyContent:"center", background:"linear-gradient(145deg,#1b1b1b,#000)", border:"1px solid rgba(255,255,255,.18)", boxShadow:"inset 0 1px 0 rgba(255,255,255,.14), 0 8px 20px rgba(0,0,0,.75)", fontSize:18 }}>🧭</span>
+            <div>
+              <p style={{ margin:0, fontSize:13, color:"#fff", fontWeight:900, textTransform:"uppercase", letterSpacing:".14em" }}>Battle Guide</p>
+              <p style={{ margin:"4px 0 0", fontSize:9, color:"rgba(255,255,255,.58)", letterSpacing:".07em", textTransform:"uppercase" }}>Pieces · Powers · Combat</p>
+            </div>
+          </div>
+          <div style={{ display:"grid", gap:8 }}>
+            {(Object.keys(PIECE_GUIDE_INFO) as PieceType[]).map(type => (
+              <BattleGuideCard8x8 key={type} pieceKey={type} info={PIECE_GUIDE_INFO[type]} has={myP.has(type)}/>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -709,7 +784,8 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
   const handleClick = useCallback((row: number, col: number) => {
     const state = gsRef.current;
     if (state.currentTurn !== myColor || state.status === "white_wins" || state.status === "black_wins") return;
-    const { board, selectedSquare, validMoves, superMoves, superMoveMode } = state;
+    if (state.pendingRetrieve) return;
+    const { board, selectedSquare, validMoves, superMoves, castleMoves, superMoveMode } = state;
     const cp = board[row][col];
     const clickedSq: Square = { row, col };
     snd("click");
@@ -726,6 +802,16 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
         setTimeout(() => { setShowWin(winner); snd("win"); }, 300);
         onGameEnd?.(winner);
       }
+      return;
+    }
+
+    // Reverse castle — swap the selected paladin with an adjacent ally
+    if (selectedSquare && castleMoves.some(m => squareEquals(m, clickedSq))) {
+      const ns = executeCastle(state, selectedSquare, clickedSq);
+      setAnimSq(clickedSq); setTimeout(() => setAnimSq(null), 420);
+      snd("move");
+      setGs(ns);
+      socket?.emit("game:move", { roomId, from:selectedSquare, to:clickedSq, newState:ns, action:"castle" });
       return;
     }
 
@@ -754,14 +840,33 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
         ...prev,
         selectedSquare: clickedSq,
         validMoves: getLegalMoves(board, row, col),
+        castleMoves: cp.type === "paladin" ? getLegalCastleMoves(board, row, col) : [],
         superMoves: [], superMoveMode: false,
       }));
       return;
     }
 
     // Deselect
-    setGs(prev => ({ ...prev, selectedSquare:null, validMoves:[], superMoves:[], superMoveMode:false }));
+    setGs(prev => ({ ...prev, selectedSquare:null, validMoves:[], superMoves:[], castleMoves:[], superMoveMode:false }));
   }, [myColor, roomId, socket, onGameEnd]);
+
+  // ─── PALADIN RETRIEVAL (back-rank) ─────────────────────────────────────────
+  const handleRetrieve = useCallback((pieceId: string) => {
+    const state = gsRef.current;
+    if (!state.pendingRetrieve) return;
+    const ns = retrieveCapturedPiece(state, pieceId);
+    snd("super");
+    setGs(ns);
+    socket?.emit("game:move", { roomId, from:null, to:null, newState:ns, action:"retrieve" });
+  }, [roomId, socket]);
+
+  const handleSkipRetrieve = useCallback(() => {
+    const state = gsRef.current;
+    if (!state.pendingRetrieve) return;
+    const ns = skipRetrieve(state);
+    setGs(ns);
+    socket?.emit("game:move", { roomId, from:null, to:null, newState:ns, action:"skip-retrieve" });
+  }, [roomId, socket]);
 
   const sendChat = (text: string) => {
     const msg: ChatMsg = { sender:myColor, text, time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) };
@@ -870,7 +975,7 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
   }}
 >
           <PlayerCard name={opponentName} color={opponentColor} isMe={false} isActive={!isMyTurn} isCheck={gs.check===opponentColor} captured={myColor==="white"?gs.capturedByBlack:gs.capturedByWhite}/>
-          <ActionPanel isMyTurn={isMyTurn} check={gs.check} myColor={myColor} selectedIsPaladin={selectedIsPaladin} paladanSuperUsed={paladanSuperUsed} superMoveMode={gs.superMoveMode} passUsed={passUsed} onSuperAttack={handleSuperAttack} onPass={handlePass}  turnTimer={30} onTimerExpire={handlePass} />
+          <ActionPanel isMyTurn={isMyTurn} check={gs.check} myColor={myColor} selectedIsPaladin={selectedIsPaladin} paladanSuperUsed={paladanSuperUsed} superMoveMode={gs.superMoveMode} passUsed={passUsed} onSuperAttack={handleSuperAttack} onPass={handlePass} />
            <MoveToast quality={toast} onDone={() => setToast(null)} />
           <PlayerCard name={playerName} color={myColor} isMe={true} isActive={isMyTurn} isCheck={gs.check===myColor} captured={myColor==="white"?gs.capturedByWhite:gs.capturedByBlack}/>
            <div
@@ -1008,6 +1113,7 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
                 const isSel   = !!gs.selectedSquare && squareEquals(gs.selectedSquare, sq);
                 const isValid = gs.validMoves.some(m => squareEquals(m, sq));
                 const isSuper = gs.superMoves.some(m => squareEquals(m, sq));
+                const isCastleMove = gs.castleMoves.some(m => squareEquals(m, sq));
                 const isLF    = !!gs.lastMove && squareEquals(gs.lastMove.from, sq);
                 const isLT    = !!gs.lastMove && squareEquals(gs.lastMove.to, sq);
                 const isChk   = piece?.type === "king" && piece.color === gs.check;
@@ -1022,6 +1128,7 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
                 else if (isGreat)     ov = "rgba(255,215,0,.22)";
                 else if (isRisky)     ov = "rgba(255,60,60,.22)";
                 else if (isLF || isLT) ov = "rgba(212,168,67,.25)";
+                else if (isCastleMove) ov = "rgba(80,160,255,.18)";
                 if (gs.superMoveMode && !isSel && !isSuper) ov = ov || "rgba(0,0,0,.08)";
 
                 return (
@@ -1068,6 +1175,16 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
   />
 )}
 
+                    {/* Reverse-castle ring — swap paladin with adjacent ally */}
+                    {isCastleMove && piece && (
+                      <div style={{
+                        position:"absolute", top:4, left:4, right:4, bottom:4, zIndex:4,
+                        borderRadius:6, boxSizing:"border-box",
+                        border:"3px dashed rgba(80,160,255,.9)",
+                        pointerEvents:"none",
+                      }} />
+                    )}
+
                     {/* Super dot */}
                     {isSuper && !piece && <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)", width:sqPx*.35, height:sqPx*.35, borderRadius:"50%", background:"rgba(255,140,0,.82)", boxShadow:"0 0 20px rgba(255,140,0,.7)", animation:"superDotPop .15s ease both", pointerEvents:"none", zIndex:4 }} />}
               {isSuper && piece && (
@@ -1105,17 +1222,71 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
         {/* ── RIGHT PANEL ── */}
         <div
   style={{
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
     width: isMobile ? boardPx + FRAME * 2 : 260,
     maxWidth: isMobile ? "100%" : 260,
-    height: isMobile ? 260 : 560,
     flexShrink: 0,
     animation: "fadeInUp .4s ease",
+    position: "relative",
+    zIndex: 20,
   }}
 >
-  <ChatPanel myColor={myColor} messages={chat} onSend={sendChat} />
+  <div style={{ height: isMobile ? 220 : 480 }}>
+    <ChatPanel myColor={myColor} messages={chat} onSend={sendChat} />
+  </div>
+  <BattleGuide8x8 myColor={myColor} gs={gs} />
 </div>
 
         {/* ── OVERLAYS ── */}
+{gs.pendingRetrieve && gs.pendingRetrieve.color === myColor && (() => {
+  const pool = myColor === "white" ? gs.capturedByBlack : gs.capturedByWhite;
+  return (
+    <div style={{
+      position:"fixed", inset:0, zIndex:112,
+      background:"rgba(0,0,0,.85)", backdropFilter:"blur(12px)",
+      display:"flex", alignItems:"center", justifyContent:"center", padding:20,
+    }}>
+      <div style={{
+        width:"min(420px,92vw)", borderRadius:22, padding:"26px 22px",
+        background:"linear-gradient(160deg,#0e0902,#1a1005,#0e0902)",
+        border:"1px solid rgba(212,168,67,.3)",
+        boxShadow:"0 0 50px rgba(212,168,67,.12), 0 30px 70px rgba(0,0,0,.9)",
+        fontFamily:"'Cinzel',Georgia,serif", textAlign:"center",
+      }}>
+        <div style={{fontSize:32, marginBottom:8}}>♻</div>
+        <h3 style={{margin:"0 0 6px", fontSize:18, color:"#c9a84c"}}>Retrieve a Piece</h3>
+        <p style={{margin:"0 0 18px", fontSize:12, color:"rgba(232,223,200,.55)"}}>
+          Your Paladin reached the back rank. Choose a fallen piece to bring back.
+        </p>
+        <div style={{display:"flex", flexWrap:"wrap", gap:10, justifyContent:"center", marginBottom:18}}>
+          {pool.length === 0
+            ? <p style={{color:"rgba(212,168,67,.4)", fontSize:12}}>No captured pieces available.</p>
+            : pool.map(p => (
+              <button key={p.id} onClick={() => handleRetrieve(p.id)}
+                style={{
+                  width:56, height:56, borderRadius:10, cursor:"pointer",
+                  background:"rgba(201,168,76,.08)", border:"1px solid rgba(201,168,76,.3)",
+                  display:"flex", alignItems:"center", justifyContent:"center", padding:6,
+                }}>
+                <img src={PIECE_IMAGES[`${p.color}-${p.type}`]} alt={p.type} style={{ width:"100%", height:"100%", objectFit:"contain" }} />
+              </button>
+            ))
+          }
+        </div>
+        <button onClick={handleSkipRetrieve} style={{
+          width:"100%", padding:"10px 0", borderRadius:10, cursor:"pointer",
+          background:"transparent", border:"1px solid rgba(212,168,67,.2)",
+          color:"rgba(212,168,67,.6)", fontSize:12, letterSpacing:".08em", textTransform:"uppercase",
+        }}>
+          Skip
+        </button>
+      </div>
+    </div>
+  );
+})()}
+
 {showRules && (
   <div
     style={{
@@ -1143,6 +1314,14 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
       @keyframes float3d {
         0%,100% { transform: translateY(0)    rotateY(0deg);   }
         50%     { transform: translateY(-4px) rotateY(12deg);  }
+      }
+      @keyframes tipIn {
+        from { opacity: 0; transform: translateY(-4px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes pulseBadge {
+        0%,100% { box-shadow: 0 0 0 0 rgba(125,189,110,.5); }
+        50%     { box-shadow: 0 0 0 5px rgba(125,189,110,0); }
       }
       .piece-icon {
         display: inline-flex;
@@ -1247,7 +1426,12 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
       </div>
 
       {/* Divider */}
-      <div style={{ height:1,background:"linear-gradient(90deg,transparent,rgba(212,168,67,.3),transparent)",marginBottom:22 }}/>
+      <div style={{ height:1,background:"linear-gradient(90deg,transparent,rgba(212,168,67,.3),transparent)",marginBottom:14 }}/>
+
+      {/* Discoverability hint */}
+      <p style={{ margin:"0 0 18px",textAlign:"center",fontSize:11,color:"rgba(212,168,67,.55)",letterSpacing:".04em",fontStyle:"italic" }}>
+        💡 Looking for piece abilities? Hover or tap any piece in the Battle Guide on the right panel.
+      </p>
 
       <div style={{ display:"grid",gap:12 }}>
 
@@ -1265,61 +1449,32 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
           </div>
         </div>
 
-        {/* Pieces — 2 column grid */}
-        <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10 }}>
-
-          {[
-            { icon:"♔", delay:"0.05s", grad:"linear-gradient(145deg,#2d1f08,#4a3214)", shadow:"rgba(212,168,67,.3)", label:"King", color:"#f0d070", text:"1 square in any direction. Capture King to win!" },
-            { icon:"♛", delay:"0.1s",  grad:"linear-gradient(145deg,#1a0d22,#2e1840)", shadow:"rgba(180,100,255,.3)", label:"Queen", color:"#c890ff", text:"Unlimited squares — straight or diagonal." },
-            { icon:"♝", delay:"0.15s", grad:"linear-gradient(145deg,#0a1a2a,#163250)", shadow:"rgba(80,160,255,.3)", label:"Bishop", color:"#70b8ff", text:"Unlimited diagonal squares in any direction." },
-            { icon:"♜", delay:"0.2s",  grad:"linear-gradient(145deg,#0d1a0d,#183018)", shadow:"rgba(80,200,100,.3)", label:"Rook",  color:"#70dd80", text:"Unlimited horizontal or vertical squares." },
-            { icon:"♞", delay:"0.25s", grad:"linear-gradient(145deg,#1a1010,#301818)", shadow:"rgba(255,100,80,.3)", label:"Knight", color:"#ff8070", text:"L-shape: 2 forward/back + 1 side, or 2 side + 1 forward." },
-            { icon:"🛡️",delay:"0.3s",  grad:"linear-gradient(145deg,#1a1408,#2e2210)", shadow:"rgba(255,180,50,.3)", label:"Paladin", color:"#ffb840", text:"1 square any dir. Super: 2 sq once. Castle swap. Back-rank retrieval." },
-          ].map(({icon,delay,grad,shadow,label,color,text})=>(
-            <div key={label} className="rule-card" style={{ flexDirection:"column",gap:10 }}>
-              <div style={{ display:"flex",alignItems:"center",gap:12 }}>
-                <div className="piece-icon" style={{ background:grad,boxShadow:`0 8px 20px rgba(0,0,0,.55),0 0 12px ${shadow},inset 0 1px 0 rgba(255,255,255,.1)`,animationDelay:delay,fontSize:24,width:46,height:46 }}>
-                  {icon}
-                </div>
-                <h3 style={{ margin:0,color,fontSize:13,letterSpacing:".1em",textTransform:"uppercase",fontWeight:700 }}>{label}</h3>
-              </div>
-              <p style={{ margin:0,color:"rgba(215,194,154,.7)",lineHeight:1.7,fontSize:12 }}>{text}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Paladin Special highlight */}
-        <div className="rule-card" style={{ background:"rgba(255,160,0,.04)",borderColor:"rgba(255,160,0,.2)" }}>
-          <div className="piece-icon" style={{ background:"linear-gradient(145deg,#1e1000,#3a2200)",boxShadow:"0 8px 20px rgba(0,0,0,.55),0 0 16px rgba(255,140,0,.4),inset 0 1px 0 rgba(255,220,100,.15)",animationDelay:".35s",fontSize:26,width:50,height:50 }}>
-            ⚡
+        {/* How to Play — movement, capturing, turns */}
+        <div className="rule-card">
+          <div className="piece-icon" style={{ background:"linear-gradient(145deg,#0e2010,#14300f)",boxShadow:"0 8px 24px rgba(0,0,0,.6),inset 0 1px 0 rgba(150,220,120,.2)",animationDelay:"0.02s" }}>
+            📜
           </div>
           <div>
-            <h3 style={{ margin:"0 0 6px",color:"#ffb030",fontSize:13,letterSpacing:".12em",textTransform:"uppercase" }}>Paladin Special Powers</h3>
-            <div style={{ display:"grid",gap:5 }}>
-              {[
-                ["🗡️","Super Strike","2-square attack in any direction — usable only once per Paladin"],
-                ["🔄","Reverse Castle","Swap with any allied piece using super move — for protection"],
-                ["🏆","Back Rank","Reach the enemy back rank to retrieve one of your captured pieces"],
-              ].map(([emoji,title,desc])=>(
-                <div key={title as string} style={{ display:"flex",gap:8,alignItems:"flex-start" }}>
-                  <span style={{ fontSize:13,flexShrink:0,marginTop:1 }}>{emoji}</span>
-                  <p style={{ margin:0,fontSize:12,color:"rgba(215,194,154,.7)",lineHeight:1.65 }}>
-                    <span style={{ color:"#ffc050",fontWeight:600 }}>{title}: </span>{desc}
-                  </p>
-                </div>
-              ))}
-            </div>
+            <h3 style={{ margin:"0 0 6px",color:"#a0e090",fontSize:13,letterSpacing:".12em",textTransform:"uppercase" }}>How to Play</h3>
+            <p style={{ margin:0,color:"rgba(215,194,154,.75)",lineHeight:1.75,fontSize:13 }}>
+              <span style={{color:"#a0e090"}}>Move:</span> click a piece to see its legal squares highlighted, then click a highlighted square to move there.{" "}
+              <span style={{color:"#a0e090"}}>Capture:</span> move onto a square occupied by an enemy piece to remove it from the board.{" "}
+              <span style={{color:"#a0e090"}}>Turns:</span> White and Black alternate — after you move (or pass), it becomes your opponent's turn.
+            </p>
           </div>
         </div>
 
-        {/* Bottom row: Victory + Mexican Standoff */}
-        <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10 }}>
+        {/* Bottom row: Victory + Mexican Standoff (1 column on narrow phones) */}
+        <div style={{ display:"grid",gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",gap:10 }}>
           <div className="rule-card" style={{ background:"rgba(255,215,0,.04)",borderColor:"rgba(255,215,0,.18)",flexDirection:"column",gap:10 }}>
-            <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+            <div style={{ display:"flex",alignItems:"center",gap:10,flexWrap:"wrap" }}>
               <div className="piece-icon" style={{ background:"linear-gradient(145deg,#1a1400,#2e2400)",boxShadow:"0 8px 20px rgba(0,0,0,.55),0 0 14px rgba(255,215,0,.35),inset 0 1px 0 rgba(255,240,100,.15)",animationDelay:".4s",fontSize:24,width:46,height:46 }}>
                 👑
               </div>
               <h3 style={{ margin:0,color:"#ffd700",fontSize:13,letterSpacing:".1em",textTransform:"uppercase" }}>Victory</h3>
+              <span style={{ marginLeft:"auto",padding:"3px 9px",borderRadius:20,background:"rgba(255,80,80,.15)",border:"1px solid rgba(255,100,100,.4)",color:"#ff9090",fontSize:9,fontWeight:800,letterSpacing:".06em",textTransform:"uppercase" }}>
+                🚫 Not King-Capture
+              </span>
             </div>
             <p style={{ margin:0,color:"rgba(215,194,154,.7)",lineHeight:1.7,fontSize:12 }}>
   In 8×8 mode, defeating the <span style={{color:"#ffd700"}}>King</span> does not guarantee victory.
@@ -1327,19 +1482,22 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
   If any enemy pieces remain, the battle continues. The fallen King may grant a final stand,
   allowing the fight to go on until the last unit falls.
   <br /><br />
-  To win, you must eliminate every enemy piece on the board — or force your opponent to surrender.
+  To win, you must <strong style={{color:"#ffd700"}}>eliminate every enemy piece</strong> on the board — or force your opponent to surrender.
 </p>
           </div>
 
           <div className="rule-card" style={{ background:"rgba(100,120,200,.04)",borderColor:"rgba(100,120,200,.18)",flexDirection:"column",gap:10 }}>
-            <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+            <div style={{ display:"flex",alignItems:"center",gap:10,flexWrap:"wrap" }}>
               <div className="piece-icon" style={{ background:"linear-gradient(145deg,#0a0e1a,#121828)",boxShadow:"0 8px 20px rgba(0,0,0,.55),0 0 14px rgba(100,120,255,.3),inset 0 1px 0 rgba(150,170,255,.1)",animationDelay:".45s",fontSize:24,width:46,height:46 }}>
                 🤝
               </div>
               <h3 style={{ margin:0,color:"#9090e8",fontSize:13,letterSpacing:".1em",textTransform:"uppercase" }}>Pass Turn</h3>
+              <span style={{ marginLeft:"auto",padding:"3px 9px",borderRadius:20,background:"rgba(125,189,110,.15)",border:"1px solid rgba(125,189,110,.4)",color:"#a0e090",fontSize:9,fontWeight:800,letterSpacing:".06em",textTransform:"uppercase",animation:"pulseBadge 2s infinite" }}>
+                ♾️ Unlimited
+              </span>
             </div>
             <p style={{ margin:0,color:"rgba(215,194,154,.7)",lineHeight:1.7,fontSize:12 }}>
-              <span style={{color:"#9090e8"}}>Mexican Standoff</span> — each player may skip their turn once. Use it wisely.
+              <span style={{color:"#9090e8"}}>Mexican Standoff</span> — you don't have to move. Pass your turn anytime, as many times as you like.
             </p>
           </div>
         </div>

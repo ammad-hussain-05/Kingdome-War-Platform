@@ -30,13 +30,10 @@ export interface Piece16 {
   mageSacrificed: boolean;
   // Thief
   thiefStealUsed: boolean;
-  // Trickster
-  tricksterStealUsed: boolean;
+  // Trickster last-stand countdown tracking
   tricksterMovesCount: number;
   // Conjurer
   conjurerSpellsLeft: number;
-  // Warlock
-  warlockBindUsed: boolean;
   // Bound (from Warlock)
   boundRoundsLeft: number;
 }
@@ -47,15 +44,14 @@ export type Board16 = (Piece16 | null)[][];
 export type SpecialMode16 =
   | null
   | "wizard-teleport-select-piece" | "wizard-teleport-select-dest"
+  | "trickster-teleport-select-piece" | "trickster-teleport-select-dest"
   | "sorceress-sleep-select" | "sorceress-teleport-select"
   | "executioner-axe-swing"
   | "super-queen-second-move"
   | "conjurer-revive-select"
-  | "warlock-bind-active"
-  | "wizard-bind-select"
   | "thief-steal-jump"
-  | "trickster-steal-jump"
-  | "mage-sacrifice-pending";
+  | "mage-sacrifice-pending"
+  | "warlock-bind-offer";
 
 export interface GameState16 {
   board: Board16;
@@ -129,8 +125,8 @@ const nm: Record<PieceType16, string> = {
   "cavalier":         p.color === "white" ? "Cavalier Prince White" : "Cavalier Prince Black",
   "mage":             p.color === "white" ? "Mage-Princess White" : "Mage-Princess Black",
   "paladin":          p.color === "white" ? "Paladin - White" : "Paladin - Black",
-  "archer":           p.color === "white" ? "Elven Archer White" : "Elven Archer Black",
-  "thief":            p.color === "white" ? "Assassin White" : "Assassin black",
+  "archer":           p.color === "white" ? "Archer White" : "Archer Black",
+  "thief":            p.color === "white" ? "Thief White" : "Thief Black",
 };
   return `/pieces-16x16/${folder}/${nm[p.type]}.png`;
 }
@@ -149,10 +145,8 @@ function mkP16(type: PieceType16, color: PlayerColor16, id: string): Piece16 {
     superQueenDoubleJumpDone: false,
     mageSacrificed: false,
     thiefStealUsed: false,
-    tricksterStealUsed: false,
     tricksterMovesCount: 0,
     conjurerSpellsLeft: 1,
-    warlockBindUsed: false,
     boundRoundsLeft: 0,
   };
 }
@@ -273,9 +267,10 @@ export function getRawMoves16(b: Board16, r: number, c: number): Square16[] {
       break;
 
     case "dragon":
-    case "gargoyle":
-      // Slide any dir + L-shape capture only (can fly over own pieces)
-      m = [...slide16(b,r,c,ALL8_16,color)];
+      // Base slide + 1-square special attack (claws/fire/tail, like a
+      // Paladin) shared with the Gargoyle, plus the Dragon-exclusive
+      // fly-over-own-pieces strike (L-shape).
+      m = [...slide16(b,r,c,ALL8_16,color), ...os16(b,r,c,color)];
       KJ_16.forEach(([dr,dc]) => {
         const sq = { row: r+dr, col: c+dc };
         if (inB16(sq.row,sq.col) && b[sq.row][sq.col] && b[sq.row][sq.col]!.color !== color)
@@ -283,15 +278,21 @@ export function getRawMoves16(b: Board16, r: number, c: number): Square16[] {
       });
       break;
 
+    case "gargoyle":
+      // Same base move + 1-square special attack as Dragon, but never the
+      // fly-over — that's Dragon-exclusive per the reference.
+      m = [...slide16(b,r,c,ALL8_16,color), ...os16(b,r,c,color)];
+      break;
+
     case "wizard":
-      // Ethereal — slides any dir, only kills wizard/sorceress
+      // Ethereal — slides any dir, only kills other ethereal pieces.
       for (const [dr,dc] of ALL8_16) {
         let rr = r+dr, cc = c+dc;
         while (inB16(rr,cc)) {
           const t = b[rr][cc];
           if (!t) { m.push({ row:rr, col:cc }); }
           else {
-            if (t.color !== color && (t.type==="wizard"||t.type==="sorceress"||t.type==="conjurer"||t.type==="warlock"||t.type==="trickster"))
+            if (t.color !== color && t.isEthereal)
               m.push({ row:rr, col:cc });
             break;
           }
@@ -301,10 +302,41 @@ export function getRawMoves16(b: Board16, r: number, c: number): Square16[] {
       break;
 
     case "sorceress":
+      // Ethereal — in the privileged pair with the Wizard, so (like the
+      // Wizard) can kill any other ethereal piece.
+      for (const [dr,dc] of ALL8_16) {
+        let rr = r+dr, cc = c+dc;
+        while (inB16(rr,cc)) {
+          const t = b[rr][cc];
+          if (!t) { m.push({ row:rr, col:cc }); }
+          else {
+            if (t.color !== color && t.isEthereal)
+              m.push({ row:rr, col:cc });
+            break;
+          }
+          rr+=dr; cc+=dc;
+        }
+      }
+      break;
+
     case "conjurer":
     case "warlock":
-      // Ethereal — slides any dir, only kills ethereals
-      m = slide16(b,r,c,ALL8_16,color);
+      // Ethereal, but NOT part of the Wizard/Sorceress pair — the reference
+      // says "only a wizard or sorceress can kill a wizard or sorceress",
+      // so these two can kill other ethereals but never a Wizard/Sorceress.
+      for (const [dr,dc] of ALL8_16) {
+        let rr = r+dr, cc = c+dc;
+        while (inB16(rr,cc)) {
+          const t = b[rr][cc];
+          if (!t) { m.push({ row:rr, col:cc }); }
+          else {
+            if (t.color !== color && t.isEthereal && t.type !== "wizard" && t.type !== "sorceress")
+              m.push({ row:rr, col:cc });
+            break;
+          }
+          rr+=dr; cc+=dc;
+        }
+      }
       break;
 
     case "trickster":
@@ -376,6 +408,17 @@ export function getRawMoves16(b: Board16, r: number, c: number): Square16[] {
         }
       }
       break;
+  }
+
+  // Only a Wizard or Sorceress may kill a Wizard or Sorceress — every other
+  // piece (including non-ethereal humans and the lesser ethereals like
+  // Conjurer/Warlock/Trickster, whose own cases already narrow this) treats
+  // an enemy Wizard/Sorceress square as untouchable.
+  if (type !== "wizard" && type !== "sorceress") {
+    m = m.filter(s => {
+      const t = b[s.row][s.col];
+      return !(t && (t.type === "wizard" || t.type === "sorceress"));
+    });
   }
 
   return dd16(m);
@@ -525,20 +568,17 @@ export function applyConjurerRevive16(b: Board16, piece: Piece16, dSq: Square16,
 
 // Warlock binds every OTHER active player's pieces for 1 round (not just a
 // single hardcoded opposite color, so this keeps working if turnOrder ever
-// has 3-4 active players instead of exactly 2).
+// has 3-4 active players instead of exactly 2). Only reachable via the
+// "warlock-bind-offer" special mode, which executeMove16 only opens right
+// after the Warlock completes a move — "he must make one move to do the
+// spell." Unlimited uses across the game — the reference states no
+// per-game cap, only the move prerequisite.
 export function applyWarlockBind16(state: GameState16, warlockColor: PlayerColor16): GameState16 {
   const ns = cloneState16(state);
   const enemies = ns.turnOrder.filter(c => c !== warlockColor);
-  // Mark all enemy pieces as bound
   for (let r = 0; r < 16; r++) for (let c = 0; c < 16; c++) {
     const p = ns.board[r][c];
     if (p && enemies.includes(p.color)) ns.board[r][c] = { ...p, boundRoundsLeft: 1 };
-  }
-  // Mark warlock as used
-  for (let r = 0; r < 16; r++) for (let c = 0; c < 16; c++) {
-    const p = ns.board[r][c];
-    if (p && p.type === "warlock" && p.color === warlockColor)
-      ns.board[r][c] = { ...p, warlockBindUsed: true };
   }
   for (const enemy of enemies) if (!ns.boundPlayers.includes(enemy)) ns.boundPlayers.push(enemy);
   ns.spellMessage = enemies.length > 1
@@ -610,6 +650,10 @@ export function advanceTurn16(state: GameState16): GameState16 {
   ns.specialMode = null; ns.specialData = null; ns.spellMessage = null;
   ns.pendingAxeSquare = null; ns.selectedSquare = null; ns.validMoves = [];
   ns.justEliminated = null;
+  // A resolved (or abandoned) Wish dice roll must never survive a turn
+  // transition — otherwise handleClick's "a dice roll is awaiting
+  // Confirm/End Turn" guard blocks the board forever for both players.
+  ns.wishDiceResult = null;
 
   // Trickster last-stand: the countdown only runs once a player's Trickster
   // is their ONLY remaining piece. If the opponent hasn't killed it within
@@ -644,12 +688,18 @@ export function advanceTurn16(state: GameState16): GameState16 {
   ns = applyEliminationCheck16(ns);
   if (ns.status === "finished") return ns;
 
+  // Tick down sleep/bound rounds for the player whose turn is ENDING, not
+  // the one about to start. Ticking the incoming player instead (the old
+  // behavior) decremented a fresh boundRoundsLeft:1 to 0 before that
+  // player's frozen turn ever happened, so Bind never actually blocked
+  // anyone — this is what makes "1 round" mean one full skipped turn.
+  const outgoing = ns.currentTurn;
   const idx = ns.turnOrder.indexOf(ns.currentTurn);
   const nextIdx = (idx + 1) % ns.turnOrder.length;
   ns.currentTurn = ns.turnOrder[nextIdx];
   ns.turnMovesLeft = 1;
 
-  ns.board = tickSleep16(ns.board, ns.currentTurn);
+  ns.board = tickSleep16(ns.board, outgoing);
 
   // Remove expired bound players
   ns.boundPlayers = ns.boundPlayers.filter(bp => {
@@ -734,6 +784,18 @@ export function executeMove16(state: GameState16, from: Square16, to: Square16):
     }
   }
 
+  // Warlock Bind — "he must make one move to do the spell": Bind is only
+  // offered right after the Warlock completes a normal move, never as a
+  // stand-alone anytime action.
+  if (piece.type === "warlock") {
+    const hasEnemies = ns.turnOrder.some(c => c !== piece.color);
+    if (hasEnemies) {
+      ns.specialMode = "warlock-bind-offer";
+      ns.spellMessage = "⛓️ Cast Bind on all enemy pieces, or skip.";
+      return ns;
+    }
+  }
+
   // Super queen second move
   if (piece.type === "super-queen" && !piece.sorceressDead && ns.turnMovesLeft > 1) {
     ns.turnMovesLeft = ns.turnMovesLeft - 1;
@@ -761,23 +823,26 @@ export function applyAxeSwing16(state: GameState16, tSq: Square16): GameState16 
   return advanceTurn16(ns);
 }
 
-// Thief steal — triple jump, take enemy piece
+// Thief steal — jumps over anyone (triple jump) to steal a piece, once per
+// game. The Thief ends up occupying the stolen piece's square ("must remain
+// where he stole that character"); the stolen piece simply disappears.
 export function applyThiefSteal16(state: GameState16, from: Square16, targetSq: Square16): GameState16 {
   const ns = cloneState16(state);
   const board = ns.board;
   const thief = board[from.row][from.col];
   const target = board[targetSq.row][targetSq.col];
-  if (!thief || !target || target.type === "mystic-king") return ns;
+  if (!thief || !target) return ns;
 
   ns.capturedBy[thief.color].push(target);
-  board[targetSq.row][targetSq.col] = null;
-  board[from.row][from.col] = { ...thief, thiefStealUsed: true };
+  board[targetSq.row][targetSq.col] = { ...thief, thiefStealUsed: true, hasMoved: true };
+  board[from.row][from.col] = null;
+  ns.lastMove = { from, to: targetSq };
   ns.spellMessage = `🗝️ Thief stole the ${target.type}!`;
   return advanceTurn16(ns);
 }
 
 // Thief's steal reaches 2-3 squares in any direction, ignoring blockers
-// (mirrors the Paladin's super-attack reach), once per game, never the king.
+// (mirrors the Paladin's super-attack reach), once per game.
 export function getThiefStealTargets16(b: Board16, r: number, c: number, color: PlayerColor16): Square16[] {
   const p = b[r][c];
   if (!p || p.type !== "thief" || p.thiefStealUsed || p.sleepRoundsLeft > 0 || p.boundRoundsLeft > 0) return [];
@@ -787,74 +852,21 @@ export function getThiefStealTargets16(b: Board16, r: number, c: number, color: 
       const rr = r + dr * d, cc = c + dc * d;
       if (!inB16(rr, cc)) continue;
       const t = b[rr][cc];
-      if (t && t.color !== color && t.type !== "mystic-king") targets.push({ row: rr, col: cc });
+      if (t && t.color !== color) targets.push({ row: rr, col: cc });
     }
   }
   return targets;
 }
 
-// Trickster teleport — its only way to "hit" a target: instantly relocate
-// onto an enemy square anywhere on the board, capturing it. One-time use,
-// never the king. Ordinary movement (Queen-like slide) is unaffected.
-export function getTricksterTeleportTargets16(b: Board16, r: number, c: number, color: PlayerColor16): Square16[] {
-  const p = b[r][c];
-  if (!p || p.type !== "trickster" || p.tricksterStealUsed || p.sleepRoundsLeft > 0 || p.boundRoundsLeft > 0) return [];
-  const targets: Square16[] = [];
-  for (let rr = 0; rr < 16; rr++) for (let cc = 0; cc < 16; cc++) {
-    const t = b[rr][cc];
-    if (t && t.color !== color && t.type !== "mystic-king") targets.push({ row: rr, col: cc });
-  }
-  return targets;
-}
-
-export function applyTricksterTeleport16(state: GameState16, from: Square16, targetSq: Square16): GameState16 {
-  const ns = cloneState16(state);
-  const board = ns.board;
-  const trickster = board[from.row][from.col];
-  const target = board[targetSq.row][targetSq.col];
-  if (!trickster || !target || target.type === "mystic-king") return advanceTurn16(ns);
-  ns.capturedBy[trickster.color].push(target);
-  board[targetSq.row][targetSq.col] = { ...trickster, tricksterStealUsed: true, hasMoved: true };
-  board[from.row][from.col] = null;
-  ns.lastMove = { from, to: targetSq };
-  ns.spellMessage = `🎭 The Trickster teleported in and struck down the ${target.type}!`;
-  return advanceTurn16(ns);
-}
-
-// ─── BIND SPELL (Wizard) ─────────────────────────────────────────────────────
-// Wizard-only: freezes ONE enemy piece for 3 rounds. Distinct from Warlock's
-// bind-all-for-1-round — the two coexist as separate abilities. Unlimited
-// casts, same as the Wizard's existing teleport ability.
-export function applyBindSpell16(b: Board16, targetSq: Square16): Board16 {
+// Trickster teleport — "they also can teleport any character anywhere but
+// must hit them to teleport them": a pure reposition tool (like the
+// Wizard's teleport), usable on ANY piece — friend or foe — moved to any
+// empty square. It is not a kill. Unlimited uses, per the reference.
+export function applyTricksterTeleport16(b: Board16, pSq: Square16, dSq: Square16): Board16 {
   const nb = cloneBoard16(b);
-  const t = nb[targetSq.row][targetSq.col];
-  if (!t) return nb;
-  nb[targetSq.row][targetSq.col] = { ...t, sleepRoundsLeft: 3 };
-  return nb;
-}
-
-// ─── DICE-GATED SPELL COST HELPERS ───────────────────────────────────────────
-// When a spell's d10 roll fails, the caster still pays its resource cost —
-// these apply only that cost, without the spell's positional effect.
-export function consumeSorceressCharge16(b: Board16, sSq: Square16): Board16 {
-  const nb = cloneBoard16(b);
-  const s = nb[sSq.row][sSq.col];
-  if (!s) return nb;
-  const left = s.sorceressSpellsLeft - 1;
-  nb[sSq.row][sSq.col] = left <= 0 ? null : { ...s, sorceressSpellsLeft: left };
-  return nb;
-}
-
-export function consumeConjurerCharge16(b: Board16, cSq: Square16): Board16 {
-  const nb = cloneBoard16(b);
-  const c = nb[cSq.row][cSq.col];
-  if (!c) return nb;
-  nb[cSq.row][cSq.col] = { ...c, conjurerSpellsLeft: c.conjurerSpellsLeft - 1 };
-  return nb;
-}
-
-export function consumeMageOnly16(b: Board16, mSq: Square16): Board16 {
-  const nb = cloneBoard16(b);
-  nb[mSq.row][mSq.col] = null;
+  const p = nb[pSq.row][pSq.col];
+  if (!p) return nb;
+  nb[dSq.row][dSq.col] = p;
+  nb[pSq.row][pSq.col] = null;
   return nb;
 }
