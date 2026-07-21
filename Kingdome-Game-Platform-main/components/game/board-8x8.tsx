@@ -582,11 +582,16 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
     // Subtracted amounts account for the actual layout chrome around the
     // board (container padding + side panels + gaps + wood frame) so the
     // board never computes wider than the space actually available to it.
+    const pad = mobile ? 16 : 24;
+    const maxByWidth = window.innerWidth - pad * 2 - FRAME * 2;
     const s = mobile
-      ? Math.min(window.innerWidth - 96, window.innerHeight - 240, 380)
-      : Math.min(window.innerWidth - 640, window.innerHeight - 80, 580);
+      ? Math.min(maxByWidth, window.innerHeight - 240, 380)
+      : Math.min(window.innerWidth - 640, window.innerHeight - 80, 580, maxByWidth);
 
-    setBoardPx(Math.max(s, 300));
+    // The floor keeps the board comfortably playable when there's room, but
+    // never at the cost of overflowing the viewport (final clamp to maxByWidth).
+    const floor = mobile ? 200 : 300;
+    setBoardPx(Math.min(Math.max(s, floor), maxByWidth));
   };
 
   calc();
@@ -835,6 +840,8 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
   <div
   style={{
     minHeight: "100vh",
+    width: "100%",
+    maxWidth: "100vw",
     background: "radial-gradient(ellipse at 50% -5%,#1c0f04 0%,#080503 50%,#020101 100%)",
     display: "flex",
     alignItems: "center",
@@ -844,6 +851,8 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
     gap: 24,
     flexWrap: "wrap",
     fontFamily: "'Cinzel',Georgia,serif",
+    overflowX: "hidden",
+    boxSizing: "border-box",
   }}
 >
 
@@ -853,8 +862,9 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
     display: "flex",
     flexDirection: "column",
     gap: 10,
-    width: 215,
-    minWidth: 215,
+    width: isMobile ? "100%" : 215,
+    minWidth: isMobile ? 0 : 215,
+    maxWidth: isMobile ? boardPx + FRAME * 2 : 215,
     flexShrink: 0,
     animation: "fadeInUp .4s ease",
   }}

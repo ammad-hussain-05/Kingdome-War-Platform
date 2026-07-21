@@ -820,10 +820,17 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
       const calc=()=>{
         const mobile=window.innerWidth<=768;setIsMobile(mobile);
         // Subtracted amounts match the real chrome around the board (container
-        // padding + side panels + gaps + row-label column + frame) so it never
-        // computes wider than the space actually available.
-        const a=mobile?Math.min(window.innerWidth-90,400):Math.min(window.innerWidth-560,window.innerHeight-110,680);
-        setSqSize(Math.max(Math.floor(a/16),mobile?20:28));
+        // padding + row-label column + grid margin) so the final size is
+        // clamped to what's actually available and can never overflow the
+        // viewport, even on very narrow phones.
+        const pad = mobile ? 22 : 28;
+        const chrome = 30; // row-label column + inner grid margin
+        const maxByWidth = window.innerWidth - pad * 2 - chrome;
+        const a = mobile
+          ? Math.min(maxByWidth, 400)
+          : Math.min(window.innerWidth - 560, window.innerHeight - 110, 680, maxByWidth);
+        const floor = mobile ? 14 : 28;
+        setSqSize(Math.min(Math.max(Math.floor(a / 16), floor), Math.floor(maxByWidth / 16)));
       };
       calc();window.addEventListener("resize",calc);return()=>window.removeEventListener("resize",calc);
     },[]);
@@ -1076,18 +1083,20 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
           <source src="https://www.pexels.com/download/video/33123413/" type="video/mp4"/>
         </video>
 
-        <div style={{minHeight:"100vh",background:"radial-gradient(ellipse at 50% -5%,#1c1428 0%,#080510 50%,#020103 100%)",display:"flex",alignItems:"center",justifyContent:"center",padding:isMobile?"220px 22px 30px":"90px 28px 30px",gap:16,flexWrap:"wrap",fontFamily:"'Cinzel',Georgia,serif"}}>
+        <div style={{minHeight:"100vh",width:"100%",maxWidth:"100vw",overflowX:"hidden",boxSizing:"border-box",background:"radial-gradient(ellipse at 50% -5%,#1c1428 0%,#080510 50%,#020103 100%)",display:"flex",alignItems:"center",justifyContent:"center",padding:isMobile?"220px 22px 30px":"90px 28px 30px",gap:16,flexWrap:"wrap",fontFamily:"'Cinzel',Georgia,serif"}}>
 
           {/* ── LEFT PANEL ── */}
           <div style={{
   display:"flex",
   flexDirection:"column",
   gap:7,
-  width:200,
+  width:isMobile?"100%":200,
+  minWidth:0,
+  maxWidth:isMobile?boardPx+12+16:200,
   flexShrink:0,
   animation:"fadeInUp .4s ease",
-  maxHeight:"calc(100vh - 110px)",
-  overflowY:"auto",
+  maxHeight:isMobile?undefined:"calc(100vh - 110px)",
+  overflowY:isMobile?"visible":"auto",
   paddingRight:4,
 }}>
             <PlayerCard16 name={playerNames[opponentColor]||opponentColor} color={opponentColor} isMe={false} isActive={gs.currentTurn===opponentColor} captured={gs.capturedBy[opponentColor]} inCheck={gs.check===opponentColor}/>
@@ -1327,8 +1336,8 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
           </div>
 
           {/* ── RIGHT PANEL ── */}
-          <div style={{display:"flex",flexDirection:"column",gap:8,width:220,flexShrink:0,animation:"fadeInUp .4s ease",position:"relative",zIndex:20}}>
-            <div style={{height:240}}>
+          <div style={{display:"flex",flexDirection:"column",gap:8,width:isMobile?"100%":220,minWidth:0,maxWidth:isMobile?boardPx+12+16:220,flexShrink:0,animation:"fadeInUp .4s ease",position:"relative",zIndex:20}}>
+            <div style={{height:isMobile?200:240}}>
               <ChatPanel myColor={myColor} messages={chat} onSend={sendChat}/>
             </div>
             <GuidePanel16 myColor={myColor} gs={gs}/>

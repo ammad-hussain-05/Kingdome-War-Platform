@@ -400,10 +400,17 @@ export default function Board12x12({myColor,roomId,playerNames,socket,onGameEnd}
     const calc=()=>{
       const mobile=window.innerWidth<=768; setIsMobile(mobile);
       // Subtracted amounts match the real chrome around the board (container
-      // padding + side panels + gaps + row-label column + frame) so it never
-      // computes wider than the space actually available.
-      const a=mobile?Math.min(window.innerWidth-84,390):Math.min(window.innerWidth-600,window.innerHeight-200,600);
-      setSqSize(Math.max(Math.floor(a/12),mobile?24:28));
+      // padding + row-label column + grid margin) so the final size is
+      // clamped to what's actually available and can never overflow the
+      // viewport, even on very narrow phones.
+      const pad = mobile ? 16 : 20;
+      const chrome = 34; // row-label column + inner grid margin
+      const maxByWidth = window.innerWidth - pad * 2 - chrome;
+      const a = mobile
+        ? Math.min(maxByWidth, 390)
+        : Math.min(window.innerWidth - 600, window.innerHeight - 200, 600, maxByWidth);
+      const floor = mobile ? 16 : 28;
+      setSqSize(Math.min(Math.max(Math.floor(a / 12), floor), Math.floor(maxByWidth / 12)));
     };
     calc(); window.addEventListener("resize",calc); return()=>window.removeEventListener("resize",calc);
   },[]);
@@ -636,10 +643,10 @@ const cols=[...Array(12)].map((_,i)=>i);
         <source src="https://www.pexels.com/download/video/10586247/" type="video/mp4"/>
       </video>
 
-      <div style={{minHeight:"100vh",background:"radial-gradient(ellipse at 50% -5%,#141828 0%,#080b14 50%,#030407 100%)",display:"flex",alignItems:"center",justifyContent:"center",padding:isMobile?"190px 16px 24px":"16px 20px",gap:18,flexWrap:"wrap",fontFamily:"'Cinzel',Georgia,serif"}}>
+      <div style={{minHeight:"100vh",width:"100%",maxWidth:"100vw",overflowX:"hidden",boxSizing:"border-box",background:"radial-gradient(ellipse at 50% -5%,#141828 0%,#080b14 50%,#030407 100%)",display:"flex",alignItems:"center",justifyContent:"center",padding:isMobile?"190px 16px 24px":"16px 20px",gap:18,flexWrap:"wrap",fontFamily:"'Cinzel',Georgia,serif"}}>
 
         {/* ── LEFT PANEL ── */}
-        <div style={{display:"flex",flexDirection:"column",gap:9,width:205,flexShrink:0,animation:"fadeInUp .4s ease"}}>
+        <div style={{display:"flex",flexDirection:"column",gap:9,width:isMobile?"100%":205,minWidth:0,maxWidth:isMobile?boardPx+16+20:205,flexShrink:0,animation:"fadeInUp .4s ease"}}>
           {(["white","black"] as PlayerColor[]).map(c=>(
             <PlayerCard key={c} name={playerNames[c]||c} color={c} isMe={c===myColor} isActive={gs.currentTurn===c} isElim={gs.eliminatedPlayers.includes(c)} captured={gs.capturedBy[c]} inCheck={gs.check===c}/>
           ))}
@@ -740,8 +747,8 @@ const cols=[...Array(12)].map((_,i)=>i);
         </div>
 
         {/* ── RIGHT PANEL ── */}
-        <div style={{display:"flex",flexDirection:"column",gap:9,width:260,flexShrink:0,animation:"fadeInUp .4s ease",position:"relative",zIndex:20}}>
-          <div style={{height:260}}>
+        <div style={{display:"flex",flexDirection:"column",gap:9,width:isMobile?"100%":260,minWidth:0,maxWidth:isMobile?boardPx+16+20:260,flexShrink:0,animation:"fadeInUp .4s ease",position:"relative",zIndex:20}}>
+          <div style={{height:isMobile?200:260}}>
             <ChatPanel myColor={myColor} messages={chat} onSend={sendChat}/>
           </div>
           <GuidePanel myColor={myColor} gs={gs}/>
