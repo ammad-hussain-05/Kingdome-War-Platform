@@ -7,7 +7,7 @@
     applySleepSpell16, applyTeleportSpell16, applyWizardTeleport16,
     applyMageSacrifice16, applyAxeSwing16, applyWarlockBind16, applyThiefSteal16,
     getAxeSwingSquares16, rollWishDice16, cloneState16,
-    getThiefStealTargets16, applyTricksterTeleport16,
+    getThiefStealTargets16, applyTricksterTeleport16, getLegalPaladinSuperMoves16,
   } from "@/lib/game/rules-16x16";
   import Fireworks from "@/components/game/fireworks";
 
@@ -27,7 +27,7 @@
     "conjurer":"Conjurer", "warlock":"Warlock", "trickster":"Trickster", "thief":"Thief",
     "super-knight":"Super Knight", "elvin-archer":"Elven Archer", "executioner":"Executioner",
     "assassin":"Assassin", "cavalier":"Cavalier Prince", "mage":"Mage-Princess", "archer":"Archer",
-    "aerobat-assassin":"Aerobat Assassin", "paladin":"Paladin",
+    "aerobat-assassin":"Acrobat Assassin", "paladin":"Paladin",
   };
   function guideIconPath16(type: PieceType16): string {
     const nm = GUIDE_ICON_FILE_16[type];
@@ -43,25 +43,25 @@
 
   const PIECE_INFO: Record<PieceType16,{name:string;move:string;special:string}> = {
 
-    "mystic-king":    {name:"Mystic King",    move:"L-shape + 1 any dir",            special:"Wizard morph — Wizard sacrifices himself for king's last wish"},
-    "super-queen":    {name:"Super Queen",    move:"Any direction, unlimited",       special:"Double move if Sorceress alive. Full power restored by Mage sacrifice"},
-    "dragon":         {name:"Dragon",         move:"Any dir unlimited + 1-square special attack",  special:"Flies over own pieces for a kill"},
-    "gargoyle":       {name:"Gargoyle",       move:"Any dir unlimited",  special:"1-square special attack in any direction (tail), like a Paladin"},
-    "wizard":         {name:"Wizard",         move:"Any dir (ethereal, can't kill humans)",   special:"Teleport any piece by touch"},
-    "sorceress":      {name:"Sorceress",      move:"Any dir (ethereal, can't kill humans)",        special:"3 spells: 😴 Sleep(3 rounds) / 🌀 Teleport / ⭐ Wish Dice"},
-    "conjurer":       {name:"Conjurer",       move:"Any dir unlimited (ethereal)",   special:"Conjure back 1 dead piece of your own"},
-    "warlock":        {name:"Warlock",        move:"Any dir unlimited (ethereal)",   special:"After moving: bind ALL enemy pieces for 1 round"},
-    "trickster":      {name:"Trickster",      move:"Any dir unlimited (ethereal), like a Queen",   special:"Teleport any character anywhere (reposition, not a kill). If it becomes its owner's LAST piece, the opponent has 10 rounds to kill it or the board resets"},
-    "thief":          {name:"Thief",          move:"Any dir unlimited",              special:"Jumps over anyone ONCE to steal a piece — ends up occupying the square it stole"},
-    "super-knight":   {name:"Super Knight",   move:"L-shape (double jump)",          special:"Two L-moves possible in one turn"},
-    "elvin-archer":   {name:"Elvin Archer",   move:"Any dir unlimited",              special:"Also L-shape kill + 1 square any dir (sword/dagger mode)"},
-    "executioner":    {name:"Executioner",    move:"Straight lines only",            special:"After stopping: axe swing kills 1 adjacent enemy"},
-    "assassin":       {name:"Assassin",       move:"Any dir + L-shape + 1 step",    special:"L-shape like a Cavalier, plus 1-square Paladin-style kill"},
-    "aerobat-assassin":{name:"Aerobat Assassin",move:"Any dir + L + 1 step",        special:"Jumps over ANY piece (even enemies) for L-move"},
-    "cavalier":       {name:"Cavalier/Prince",move:"L-shape + 1 any dir",           special:"Always lands opposite color square"},
-    "mage":           {name:"Mage/Princess",  move:"Any direction unlimited",        special:"Sacrifice self to restore Super Queen full power"},
-    "paladin":        {name:"Paladin",        move:"1 square any direction",         special:"Super attack 2-3 squares ONCE only"},
-    "archer":         {name:"Archer",         move:"Any direction unlimited",        special:"Ranged arrow attacks — no special skill"},
+    "mystic-king":    {name:"Mystic King",    move:"Moves in an L-shape, plus 1 square in any direction",            special:"Wizard Morph — the Wizard sacrifices itself so the King can be granted one last wish"},
+    "super-queen":    {name:"Super Queen",    move:"Moves in any direction, unlimited distance",       special:"Gains a double move while the Sorceress is alive; sacrificing the Mage restores the Super Queen to full power"},
+    "dragon":         {name:"Dragon",         move:"Moves in any direction, unlimited distance, plus a 1-square special attack",  special:"Can fly over its own pieces to make a kill"},
+    "gargoyle":       {name:"Gargoyle",       move:"Wing and Tail Attack: 1 square in any direction",  special:"Fire Attack: 2 squares in any direction"},
+    "wizard":         {name:"Wizard",         move:"Moves in any direction (ethereal — cannot kill non-ethereal pieces)",   special:"Teleports any piece by touching it"},
+    "sorceress":      {name:"Sorceress",      move:"Moves in any direction (ethereal — cannot kill non-ethereal pieces)",        special:"Casts one of three spells: 😴 Sleep for 3 rounds, 🌀 Teleport, or ⭐ Wish Dice"},
+    "conjurer":       {name:"Conjurer",       move:"Moves in any direction, unlimited distance (ethereal)",   special:"Brings back 1 of its own dead pieces"},
+    "warlock":        {name:"Warlock",        move:"Moves in any direction, unlimited distance (ethereal)",   special:"After moving, binds all enemy pieces in place for 1 round"},
+    "trickster":      {name:"Trickster",      move:"Moves in any direction, unlimited distance (ethereal), like a Queen",   special:"Teleports any character to a new position (a reposition, not a kill). If it becomes its owner's last remaining piece, the opponent has 10 rounds to capture it or the board resets"},
+    "thief":          {name:"Thief",          move:"Moves in any direction, unlimited distance",              special:"Jumps over another piece once to steal an enemy piece, ending up on the square it stole"},
+    "super-knight":   {name:"Super Knight",   move:"Moves in an L-shape, with a double jump",          special:"Can perform two L-shape moves in a single turn"},
+    "elvin-archer":   {name:"Elvin Archer",   move:"Moves in any direction, unlimited distance",              special:"Also strikes with an L-shape kill plus 1 square in any direction (sword and dagger mode)"},
+    "executioner":    {name:"Executioner",    move:"Moves in straight lines only",            special:"After stopping, swings an axe to kill 1 adjacent enemy"},
+    "assassin":       {name:"Assassin",       move:"Moves in any direction, plus an L-shape move, plus 1 square",    special:"Moves in an L-shape like a Cavalier, plus a 1-square Paladin-style kill"},
+    "aerobat-assassin":{name:"Acrobat Assassin",move:"Moves in any direction, plus an L-shape move, plus 1 square",        special:"Jumps over any piece, even enemies, to perform its L-shape move"},
+    "cavalier":       {name:"Cavalier/Prince",move:"Moves in an L-shape, plus 1 square in any direction",           special:"Always lands on the opposite color square"},
+    "mage":           {name:"Mage/Princess",  move:"Moves in any direction, unlimited distance",        special:"Sacrifices itself to restore the Super Queen's full power"},
+    "paladin":        {name:"Paladin",        move:"Normal Movement: 1 square in any direction",         special:"Super Move: a one-time 3-square surprise attack in any direction; after use, the Paladin returns to normal 1-square movement"},
+    "archer":         {name:"Archer",         move:"Moves in any direction, unlimited distance",        special:"Ranged arrow attacks — no special ability"},
   };
 
   const AC: Record<PlayerColor16,string> = { white:"#e8dfc0", black:"#c8a96e" };
@@ -682,7 +682,7 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
     };
     const mNQ=findMageQueen();
     const deadPieces=gs.capturedBy[myColor].filter(p=>p.type!=="mystic-king");
-    if(!hasSorc&&!hasWiz&&!hasConj&&!hasWarlock&&!hasThief&&!hasTrickster&&!mNQ&&gs.specialMode!=="warlock-bind-offer"&&!gs.spellMessage)return null;
+    if(!hasSorc&&!hasWiz&&!hasConj&&!hasWarlock&&!hasThief&&!hasTrickster&&!mNQ&&gs.specialMode!=="warlock-bind-offer"&&!gs.spellMessage&&!gs.superMoveMode)return null;
 
     const spells=[
       hasSorc&&{id:"spell-sleep",icon:"😴",label:`Sleep`,sub:`${spL} left`,color:"#9b7fff",bg:"rgba(100,60,255,.15)",border:"rgba(120,80,255,.4)"},
@@ -732,7 +732,7 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
         )}
 
         {/* Spell buttons — modern grid */}
-        {!gs.specialMode&&!gs.wishDiceResult&&spells.length>0&&(
+        {!gs.specialMode&&!gs.wishDiceResult&&!gs.superMoveMode&&spells.length>0&&(
 <div style={{
   display:"flex",
   gap:6,
@@ -791,8 +791,13 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
           </div>
         )}
 
+        {/* Paladin Super Move — choose a square 3 spaces away */}
+        {gs.superMoveMode&&(
+          <p style={{margin:"0 0 4px",fontSize:11,color:"#ffb347",textAlign:"center",fontWeight:700}}>⚔ Choose a square 3 spaces away to strike</p>
+        )}
+
         {/* Cancel button for other special modes */}
-        {gs.specialMode&&gs.specialMode!=="conjurer-revive-select"&&gs.specialMode!=="warlock-bind-offer"&&!gs.wishDiceResult&&(
+        {(gs.specialMode&&gs.specialMode!=="conjurer-revive-select"&&gs.specialMode!=="warlock-bind-offer"&&!gs.wishDiceResult||gs.superMoveMode)&&(
           <div style={{display:"flex",justifyContent:"center",marginTop:8}}>
             <button onClick={onCancel} style={{padding:"7px 20px",borderRadius:10,background:"rgba(255,60,60,.1)",border:"1px solid rgba(255,60,60,.3)",color:"#ff8080",fontSize:11,cursor:"pointer",fontWeight:700,fontFamily:"'Cinzel',Georgia,serif"}}>✕ Cancel Spell</button>
           </div>
@@ -963,9 +968,22 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
 
     const cancelSpecial=useCallback(()=>{
       const state=gsRef.current;
-      const ns={...cloneState16(state),specialMode:null as any,specialData:null,spellMessage:null,wishDiceResult:null,selectedSquare:null,validMoves:[]};
+      const ns={...cloneState16(state),specialMode:null as any,specialData:null,spellMessage:null,wishDiceResult:null,selectedSquare:null,validMoves:[],superMoves:[],superMoveMode:false};
       setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
     },[roomId,socket]);
+
+    // ─── PALADIN SUPER MOVE (one-time 3-square surprise attack) ────────────────
+    const handleSuperAttack16=useCallback(()=>{
+      const state=gsRef.current;
+      if(!state.selectedSquare)return;
+      const {row,col}=state.selectedSquare;
+      const piece=state.board[row][col];
+      if(!piece||piece.type!=="paladin"||piece.color!==myColor||piece.paladanSuperUsed)return;
+      const superMoves=getLegalPaladinSuperMoves16(state.board,row,col,state.turnOrder);
+      snd("select");
+      const ns={...cloneState16(state),superMoves,superMoveMode:true,validMoves:[]};
+      setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
+    },[myColor,roomId,socket]);
 
     // ─── CLICK ────────────────────────────────────────────────────────────────
     const handleClick=useCallback((row:number,col:number)=>{
@@ -973,9 +991,20 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
       if(state.status==="finished"||state.currentTurn!==myColor)return;
       if(state.wishDiceResult!==null)return; // a dice roll is awaiting Confirm/End Turn — ignore board clicks
       if(state.specialMode==="warlock-bind-offer")return; // awaiting Cast Bind / Skip — ignore board clicks
-      const {board,selectedSquare,validMoves,specialMode}=state;
+      const {board,selectedSquare,validMoves,superMoves,superMoveMode,specialMode}=state;
       const cp=board[row][col];const sq:Square16={row,col};
       snd("click");
+
+      // Paladin Super Move — wholly separate from normal validMoves.
+      if(superMoveMode&&selectedSquare&&superMoves.some(m=>sq16Eq(m,sq))){
+        const ns=executeMove16(state,selectedSquare,sq);
+        setAnimSq(sq);setTimeout(()=>setAnimSq(null),450);
+        snd("super");
+        showMoveFeedback(ns,sq);
+        setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
+        if(ns.status==="finished"&&ns.winner){setTimeout(()=>{setShowWin(ns.winner);snd("win");},400);onGameEnd?.(ns.winner!);}
+        return;
+      }
 
       if(specialMode==="sorceress-sleep-select"){
         // Sleep is guaranteed, per the reference — no dice roll.
@@ -1063,9 +1092,9 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
       }
       if(cp&&cp.color===myColor&&cp.sleepRoundsLeft===0&&cp.boundRoundsLeft===0){
         snd("select");const moves=getLegalMoves16(board,row,col,state.turnOrder);
-        setGs(prev=>({...prev,selectedSquare:sq,validMoves:moves}));return;
+        setGs(prev=>({...prev,selectedSquare:sq,validMoves:moves,superMoves:[],superMoveMode:false}));return;
       }
-      setGs(prev=>({...prev,selectedSquare:null,validMoves:[]}));
+      setGs(prev=>({...prev,selectedSquare:null,validMoves:[],superMoves:[],superMoveMode:false}));
     },[myColor,roomId,socket,onGameEnd]);
 
     // ─── QUIT ────────────────────────────────────────────────────────────────
@@ -1150,6 +1179,34 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
   zIndex:20,
   position:"relative"
 }}>
+
+  {/* PALADIN SUPER ATTACK */}
+  {(()=>{
+    const selSq=gs.selectedSquare;
+    const selPiece=selSq?gs.board[selSq.row][selSq.col]:null;
+    const selectedIsPaladin=!!selPiece&&selPiece.type==="paladin"&&selPiece.color===myColor;
+    const isMyTurn=gs.currentTurn===myColor&&gs.status==="playing";
+    if(!isMyTurn||!selectedIsPaladin)return null;
+    const paladanSuperUsed=!!selPiece?.paladanSuperUsed;
+    const superMoveMode=gs.superMoveMode;
+    return(
+      <button onClick={()=>{if(paladanSuperUsed)return;handleSuperAttack16();}}
+        style={{width:"100%",minHeight:58,padding:"12px 14px",borderRadius:16,cursor:paladanSuperUsed?"default":"pointer",
+          background:paladanSuperUsed?"linear-gradient(135deg, rgba(42,32,18,0.9), rgba(120,15,8,0.95))":superMoveMode?"linear-gradient(135deg, rgba(255,140,0,0.75), rgba(90,45,0,0.85))":"linear-gradient(135deg, rgba(255,160,35,0.65), rgba(80,42,8,0.75))",
+          border:`1px solid ${paladanSuperUsed?"rgba(120,90,45,.20)":superMoveMode?"rgba(255,160,40,.75)":"rgba(255,170,60,.42)"}`,
+          display:"flex",alignItems:"center",gap:12,transition:"all .2s",opacity:paladanSuperUsed?.62:1,position:"relative",overflow:"hidden"}}>
+        <span style={{width:34,height:34,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,background:paladanSuperUsed?"rgba(255,255,255,.05)":"rgba(255,160,35,.16)",border:"1px solid rgba(255,200,120,.14)",flexShrink:0}}>⚡</span>
+        <div style={{textAlign:"left",minWidth:0}}>
+          <p style={{margin:0,fontSize:11,fontWeight:800,letterSpacing:".12em",textTransform:"uppercase",color:paladanSuperUsed?"rgba(170,130,70,.42)":superMoveMode?"#ffb347":"#ffc46b"}}>
+            {paladanSuperUsed?"Super Used":superMoveMode?"Super Active":"Super Attack"}
+          </p>
+          <p style={{margin:"3px 0 0",fontSize:10,color:paladanSuperUsed?"rgba(170,130,70,.28)":"rgba(255,195,110,.50)"}}>
+            {paladanSuperUsed?"One-time power spent":"Paladin 3-square strike"}
+          </p>
+        </div>
+      </button>
+    );
+  })()}
 
   {/* GAME RULES */}
   <button
@@ -1323,6 +1380,7 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
                     const isRisky=!!riskySq&&sq16Eq(riskySq,sq);
                     const isAxeT=gs.specialMode==="executioner-axe-swing"&&gs.pendingAxeSquare&&getAxeSwingSquares16(gs.board,gs.pendingAxeSquare.row,gs.pendingAxeSquare.col,myColor).some(s=>sq16Eq(s,sq));
                     const isThiefT=gs.specialMode==="thief-steal-jump"&&gs.specialData?.pieceSq&&getThiefStealTargets16(gs.board,gs.specialData.pieceSq.row,gs.specialData.pieceSq.col,myColor).some(s=>sq16Eq(s,sq));
+                    const isSuper=gs.superMoveMode&&gs.superMoves.some(m=>sq16Eq(m,sq));
                     const baseBg=isLight?"#cdb088":"#553618";
                     let ov="";
                     if(isSel)ov="rgba(212,168,67,.55)";
@@ -1332,6 +1390,7 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
                     else if(isLF||isLT)ov="rgba(212,168,67,.2)";
                     else if(isAxeT)ov="rgba(255,80,0,.45)";
                     else if(isThiefT)ov="rgba(200,40,140,.4)";
+                    if(gs.superMoveMode&&!isSel&&!isSuper)ov=ov||"rgba(0,0,0,.1)";
                     return(
                       <div key={`${row}-${col}`} className="sq16" onClick={()=>handleClick(row,col)} style={{width:sqSize,height:sqSize,background:baseBg}}>
                         <div style={{position:"absolute",inset:0,zIndex:0,pointerEvents:"none",background:isLight?"linear-gradient(135deg,rgba(255,255,255,.1) 0%,transparent 55%)":"linear-gradient(135deg,rgba(255,255,255,.04) 0%,rgba(0,0,0,.2) 100%)"}}/>
@@ -1342,6 +1401,8 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
                         {isValid&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"2px solid rgba(212,168,67,.82)",borderRadius:3,pointerEvents:"none"}}/>}
                         {isAxeT&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"2px solid rgba(255,80,0,.85)",borderRadius:3,pointerEvents:"none"}}/>}
                         {isThiefT&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"2px solid rgba(200,40,140,.9)",borderRadius:3,pointerEvents:"none"}}/>}
+                        {isSuper&&!piece&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:sqSize*.3,height:sqSize*.3,borderRadius:"50%",background:"rgba(255,140,0,.82)",boxShadow:"0 0 14px rgba(255,140,0,.7)",animation:"dotPop .14s ease both",pointerEvents:"none",zIndex:4}}/>}
+                        {isSuper&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"2px solid rgba(255,140,0,.9)",borderRadius:3,boxShadow:"inset 0 0 8px rgba(255,140,0,.3)",pointerEvents:"none"}}/>}
                         {piece&&<PieceImg piece={piece} sqSize={sqSize} isAnim={isAnim} isGreat={isGreat} isRisky={isRisky}/>}
                       </div>
                     );

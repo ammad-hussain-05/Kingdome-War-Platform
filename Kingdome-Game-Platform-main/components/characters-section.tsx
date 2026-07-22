@@ -8,7 +8,7 @@ const characters = [
   { name: "Queen",           file: "/all-characters/Queen.png",           num: "03" },
   { name: "Knight",          file: "/all-characters/Knight.png",          num: "04" },
   { name: "Rook",            file: "/all-characters/Rook.png",            num: "05" },
-  { name: "Aerobat Assassin",file: "/all-characters/Aerobat Assassin.png",num: "06" },
+  { name: "Acrobat Assassin",file: "/all-characters/Acrobat Assassin.png",num: "06" },
   { name: "Conjurer",        file: "/all-characters/Conjurer.png",        num: "07" },
   { name: "Mage Princess",   file: "/all-characters/Mage-Princess.png",   num: "08" },
   { name: "Mystic King",     file: "/all-characters/Mystic King.png",     num: "09" },

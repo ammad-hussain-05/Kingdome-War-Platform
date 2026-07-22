@@ -63,6 +63,10 @@ export interface GameState16 {
   capturedBy: Record<PlayerColor16, Piece16[]>;
   selectedSquare: Square16 | null;
   validMoves: Square16[];
+  // Paladin Super Move (one-time 3-square surprise attack) — kept wholly
+  // separate from validMoves so it never appears as a normal move option.
+  superMoves: Square16[];
+  superMoveMode: boolean;
   status: "playing" | "finished";
   winner: PlayerColor16 | null;
   lastMove: { from: Square16; to: Square16 } | null;
@@ -97,6 +101,7 @@ export function cloneState16(s: GameState16): GameState16 {
     eliminatedPlayers: [...s.eliminatedPlayers],
     capturedBy: { white: [...s.capturedBy.white], black: [...s.capturedBy.black] },
     validMoves: [...s.validMoves],
+    superMoves: [...s.superMoves],
     specialData: s.specialData ? { ...s.specialData } : null,
     boundPlayers: [...s.boundPlayers],
     tricksterAliveCount: { ...s.tricksterAliveCount },
@@ -185,6 +190,8 @@ export function createInitialGameState16(): GameState16 {
     capturedBy: { white: [], black: [] },
     selectedSquare: null,
     validMoves: [],
+    superMoves: [],
+    superMoveMode: false,
     status: "playing",
     winner: null,
     lastMove: null,
@@ -279,9 +286,13 @@ export function getRawMoves16(b: Board16, r: number, c: number): Square16[] {
       break;
 
     case "gargoyle":
-      // Same base move + 1-square special attack as Dragon, but never the
-      // fly-over — that's Dragon-exclusive per the reference.
-      m = [...slide16(b,r,c,ALL8_16,color), ...os16(b,r,c,color)];
+      // Wing/Tail Attack (1 square) + Fire Attack (2 squares), any of the 8
+      // directions, every turn — no unlimited slide, no one-time limit.
+      for (const [dr, dc] of ALL8_16)
+        for (const d of [1, 2]) {
+          const rr = r + dr * d, cc = c + dc * d;
+          if (inB16(rr, cc) && b[rr][cc]?.color !== color) m.push({ row: rr, col: cc });
+        }
       break;
 
     case "wizard":
@@ -398,15 +409,11 @@ export function getRawMoves16(b: Board16, r: number, c: number): Square16[] {
       break;
 
     case "paladin":
+      // Normal move/kill: 1 square any direction, every turn — nothing
+      // more. The 3-square Super Move is a wholly separate, one-time
+      // ability (see getPaladinSuperMoves16 below); it is never part of
+      // the piece's regular move list. Matches the 12x12 Paladin rules.
       m = [...os16(b,r,c,color)];
-      if (!p.paladanSuperUsed) {
-        for (const [dr,dc] of ALL8_16) {
-          for (const d of [2,3]) {
-            const rr = r+dr*d, cc = c+dc*d;
-            if (inB16(rr,cc) && b[rr][cc]?.color !== color) m.push({ row:rr, col:cc });
-          }
-        }
-      }
       break;
   }
 
@@ -424,6 +431,26 @@ export function getRawMoves16(b: Board16, r: number, c: number): Square16[] {
   return dd16(m);
 }
 
+// ─── PALADIN SUPER MOVE (one-time 3-square surprise attack) ──────────────────
+// Wholly separate from getRawMoves16/getLegalMoves16 — never merged into the
+// piece's regular move list. Only offered once per Paladin (paladanSuperUsed
+// gates it), and only via its own selection path in the UI.
+export function getPaladinSuperMoves16(b: Board16, r: number, c: number): Square16[] {
+  const p = b[r][c];
+  if (!p || p.type !== "paladin" || p.paladanSuperUsed) return [];
+  const m: Square16[] = [];
+  for (const [dr, dc] of ALL8_16) {
+    const rr = r + dr * 3, cc = c + dc * 3;
+    if (inB16(rr, cc) && b[rr][cc]?.color !== p.color) m.push({ row: rr, col: cc });
+  }
+  // Only a Wizard or Sorceress may kill a Wizard or Sorceress — same
+  // protection as every other piece's regular move list.
+  return m.filter(s => {
+    const t = b[s.row][s.col];
+    return !(t && (t.type === "wizard" || t.type === "sorceress"));
+  });
+}
+
 export function findKing16(b: Board16, color: PlayerColor16): Square16 | null {
   for (let r = 0; r < 16; r++)
     for (let c = 0; c < 16; c++)
@@ -439,6 +466,7 @@ export function isKingInCheck16(b: Board16, color: PlayerColor16, active: Player
     const p = b[r][c];
     if (p && p.color !== color && active.includes(p.color)) {
       if (getRawMoves16(b, r, c).some(m => sq16Eq(m, k))) return true;
+      if (p.type === "paladin" && getPaladinSuperMoves16(b, r, c).some(m => sq16Eq(m, k))) return true;
     }
   }
   return false;
@@ -448,6 +476,17 @@ export function getLegalMoves16(b: Board16, row: number, col: number, active: Pl
   const p = b[row][col];
   if (!p) return [];
   return getRawMoves16(b, row, col).filter(to => {
+    const t = cloneBoard16(b);
+    t[to.row][to.col] = t[row][col];
+    t[row][col] = null;
+    return !isKingInCheck16(t, p.color, active);
+  });
+}
+
+export function getLegalPaladinSuperMoves16(b: Board16, row: number, col: number, active: PlayerColor16[]): Square16[] {
+  const p = b[row][col];
+  if (!p) return [];
+  return getPaladinSuperMoves16(b, row, col).filter(to => {
     const t = cloneBoard16(b);
     t[to.row][to.col] = t[row][col];
     t[row][col] = null;
@@ -649,6 +688,7 @@ export function advanceTurn16(state: GameState16): GameState16 {
   let ns = cloneState16(state);
   ns.specialMode = null; ns.specialData = null; ns.spellMessage = null;
   ns.pendingAxeSquare = null; ns.selectedSquare = null; ns.validMoves = [];
+  ns.superMoves = []; ns.superMoveMode = false;
   ns.justEliminated = null;
   // A resolved (or abandoned) Wish dice roll must never survive a turn
   // transition — otherwise handleClick's "a dice roll is awaiting
@@ -768,6 +808,7 @@ export function executeMove16(state: GameState16, from: Square16, to: Square16):
   board[from.row][from.col] = null;
   ns.lastMove = { from, to };
   ns.selectedSquare = null; ns.validMoves = [];
+  ns.superMoves = []; ns.superMoveMode = false;
   ns.specialMode = null; ns.specialData = null; ns.spellMessage = null; ns.wishDiceResult = null;
 
   ns = applyEliminationCheck16(ns);

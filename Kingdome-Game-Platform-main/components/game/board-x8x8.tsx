@@ -38,45 +38,195 @@ function snd(type: string) {
 const AC: Record<PlayerColorX, string> = { white: "#e8dfc0", black: "#c8a96e", golden: "#d4a843", grey: "#b8c0cc" };
 const SIDE_LABEL: Record<PlayerColorX, string> = { white: "Top", grey: "Right", black: "Bottom", golden: "Left" };
 
-// ─── PLAYER MINI CARD ────────────────────────────────────────────────────────
-function PlayerMiniCard({ color, name, isMe, isActive, isElim, captured }: {
+// ─── BATTLE GUIDE — identical piece set/abilities to 8x8 Classic War ───────
+// Same six pieces, same movement/special text as rules-8x8.ts's PIECE_GUIDE_INFO,
+// only the Paladin Super Strike distance note reflects the actual implemented
+// range (2 squares) shared by both rules-8x8.ts and rules-x8x8.ts.
+const RULE_ICON_SRC: Record<PieceTypeX, string> = {
+  king: "/all-characters/King.png",
+  queen: "/all-characters/Queen.png",
+  bishop: "/all-characters/Bishop.png",
+  rook: "/all-characters/Rook.png",
+  knight: "/all-characters/Knight.png",
+  paladin: "/all-characters/Paladin.png",
+};
+const PIECE_GUIDE_INFO: Record<PieceTypeX, { name: string; move: string; special: string }> = {
+  king: { name: "King", move: "1 square in any direction", special: "Capturing him doesn't end the game — the fight goes on until an army is fully eliminated" },
+  queen: { name: "Queen", move: "Unlimited squares — straight or diagonal", special: "Your most powerful piece — commands entire ranks, files, and diagonals at once" },
+  bishop: { name: "Bishop", move: "Unlimited diagonal squares, any direction", special: "Stays on one square color for the whole game" },
+  rook: { name: "Rook", move: "Unlimited horizontal or vertical squares", special: "Strongest on open files and ranks, especially late-game" },
+  knight: { name: "Knight", move: "L-shape: 2 squares + 1 side, jumps pieces", special: "The only piece that can jump over others" },
+  paladin: { name: "Paladin", move: "1 square in any direction", special: "Super Strike: 2-square attack once · Reverse Castle: swap with an ally · Back Rank: retrieve a captured piece" },
+};
+
+function RulePieceIcon({ pieceKey }: { pieceKey: PieceTypeX }) {
+  const [failed, setFailed] = useState(false);
+  const src = RULE_ICON_SRC[pieceKey];
+  if (failed) return <>♟</>;
+  return <img src={src} alt={pieceKey} onError={() => setFailed(true)}
+    style={{ width: "82%", height: "82%", objectFit: "contain", pointerEvents: "none" }} />;
+}
+
+function BattleGuideCardX({ pieceKey, info, has }: { pieceKey: PieceTypeX; info: { name: string; move: string; special: string }; has: boolean }) {
+  const [hot, setHot] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHot(true)}
+      onMouseLeave={() => setHot(false)}
+      onClick={() => setHot(h => !h)}
+      style={{
+        padding: "13px 14px", borderRadius: 16, cursor: "pointer", WebkitTapHighlightColor: "transparent",
+        transition: "all .2s ease", transform: hot ? "translateY(-2px) scale(1.015)" : "none",
+        background: hot
+          ? "linear-gradient(145deg,rgba(212,168,67,.2),rgba(255,255,255,.05))"
+          : has ? "linear-gradient(145deg,rgba(255,255,255,.08),rgba(255,255,255,.02))" : "linear-gradient(145deg,rgba(255,255,255,.03),rgba(255,255,255,.01))",
+        border: `1px solid ${hot ? "rgba(212,168,67,.65)" : has ? "rgba(255,255,255,.14)" : "rgba(255,255,255,.06)"}`,
+        opacity: has ? 1 : .45,
+        boxShadow: hot
+          ? "0 14px 30px rgba(0,0,0,.55), 0 0 18px rgba(212,168,67,.28), inset 0 1px 0 rgba(255,255,255,.12)"
+          : has ? "0 8px 18px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.06)" : "none",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 8 }}>
+        <span style={{ width: 42, height: 42, borderRadius: 13, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, background: "#050505", border: "1px solid rgba(255,255,255,.12)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.1), 0 6px 14px rgba(0,0,0,.6)", overflow: "hidden" }}>
+          <RulePieceIcon pieceKey={pieceKey} />
+        </span>
+        <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: "#fff", textShadow: "0 2px 8px rgba(0,0,0,.8)", letterSpacing: ".04em" }}>
+          {info.name}{!has ? " ✗" : ""}
+        </p>
+      </div>
+      <p style={{ margin: "0 0 5px", fontSize: 11.5, color: hot ? "#fff" : "rgba(255,255,255,.8)", lineHeight: 1.6 }}>
+        <span style={{ color: "#78d7ff" }}>⚔ Ability:</span> {info.move}
+      </p>
+      <p style={{ margin: 0, fontSize: 11.5, color: hot ? "#fff" : "rgba(255,255,255,.68)", lineHeight: 1.6 }}>
+        <span style={{ color: "#ffd15c" }}>✦ Special:</span> {info.special}
+      </p>
+    </div>
+  );
+}
+
+// ─── PANEL FRAME — ornamental corner-bracket card used for both side panels ─
+function CornerBracket({ top, left, right, bottom }: { top?: boolean; left?: boolean; right?: boolean; bottom?: boolean }) {
+  return (
+    <div style={{
+      position: "absolute", width: 16, height: 16, pointerEvents: "none",
+      top: top ? 8 : undefined, bottom: bottom ? 8 : undefined,
+      left: left ? 8 : undefined, right: right ? 8 : undefined,
+      borderTop: top ? "2px solid rgba(212,168,67,.55)" : undefined,
+      borderBottom: bottom ? "2px solid rgba(212,168,67,.55)" : undefined,
+      borderLeft: left ? "2px solid rgba(212,168,67,.55)" : undefined,
+      borderRight: right ? "2px solid rgba(212,168,67,.55)" : undefined,
+    }} />
+  );
+}
+function PanelFrame({ title, children, isMobile }: { title: string; children: React.ReactNode; isMobile: boolean }) {
+  return (
+    <div style={{
+      position: "relative", width: isMobile ? "100%" : 272, flexShrink: 0,
+      background: "linear-gradient(160deg,rgba(10,8,4,.75),rgba(5,4,2,.85))",
+      border: "1px solid rgba(212,168,67,.22)", borderRadius: 16, padding: "18px 15px",
+      backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
+      boxShadow: "0 24px 60px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.04)",
+    }}>
+      <CornerBracket top left /><CornerBracket top right /><CornerBracket bottom left /><CornerBracket bottom right />
+      <div style={{ textAlign: "center", marginBottom: 14 }}>
+        <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: "#e8c96a", letterSpacing: ".18em", textTransform: "uppercase" }}>{title}</p>
+        <div style={{ width: 26, height: 1, background: "linear-gradient(90deg,transparent,rgba(212,168,67,.6),transparent)", margin: "8px auto 0" }} />
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// ─── KINGDOM CARD (left panel) ──────────────────────────────────────────────
+function KingdomCard({ color, name, isMe, isActive, isElim, captured }: {
   color: PlayerColorX; name: string; isMe: boolean; isActive: boolean; isElim: boolean; captured: PieceX[];
 }) {
   const ac = AC[color];
   return (
     <div style={{
-      borderRadius: 14, padding: "10px 12px",
-      background: isElim ? "linear-gradient(135deg,rgba(70,0,0,.5),rgba(20,0,0,.7))" : "linear-gradient(135deg,rgba(20,16,8,.9),rgba(10,8,4,.9))",
-      border: `1px solid ${isElim ? "rgba(255,70,70,.35)" : ac + "45"}`,
+      display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", borderRadius: 13, marginBottom: 10,
+      background: isElim ? "linear-gradient(135deg,rgba(70,0,0,.5),rgba(20,0,0,.7))" : "rgba(10,8,4,.7)",
+      border: `1px solid ${isElim ? "rgba(255,70,70,.35)" : isActive ? "rgba(212,168,67,.8)" : "rgba(255,255,255,.09)"}`,
       opacity: isElim ? .5 : 1, transition: "all .3s",
-      boxShadow: isActive && !isElim ? `0 0 18px ${ac}55, 0 8px 20px rgba(0,0,0,.4)` : "0 6px 16px rgba(0,0,0,.3)",
+      boxShadow: isActive && !isElim ? "0 0 20px rgba(212,168,67,.35), 0 8px 20px rgba(0,0,0,.5)" : "0 6px 14px rgba(0,0,0,.35)",
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: captured.length > 0 ? 6 : 0 }}>
-        <div style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0, background: ac, border: "2px solid rgba(255,255,255,.25)", boxShadow: isActive && !isElim ? `0 0 10px ${ac}` : "none" }} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: "#e8dfc0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}{isMe ? " (You)" : ""}</p>
-          <p style={{ margin: "1px 0 0", fontSize: 9, color: "rgba(220,200,165,.5)", textTransform: "uppercase", letterSpacing: ".1em" }}>{isElim ? "Eliminated" : `${SIDE_LABEL[color]} · ${color}`}</p>
-        </div>
-        {isActive && !isElim && <span style={{ width: 7, height: 7, borderRadius: "50%", background: ac, boxShadow: `0 0 8px ${ac}`, animation: "x8Pulse 1.5s infinite", flexShrink: 0 }} />}
+      <div style={{ width: 40, height: 40, borderRadius: "50%", flexShrink: 0, background: ac, border: "2px solid rgba(255,255,255,.25)",
+        boxShadow: isActive && !isElim ? `0 0 12px ${ac}` : "none",
+        display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: "rgba(0,0,0,.55)" }}>♛</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ margin: 0, fontSize: 12.5, fontWeight: 800, color: "#fff", textTransform: "uppercase", letterSpacing: ".02em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}{isMe ? " (You)" : ""}</p>
+        <p style={{ margin: "2px 0 0", fontSize: 9.5, color: "rgba(200,195,205,.5)", textTransform: "uppercase", letterSpacing: ".1em" }}>{isElim ? "Eliminated" : `${SIDE_LABEL[color]} · ${color}`}</p>
+        {captured.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 5, maxHeight: 20, overflow: "hidden" }}>
+            {captured.slice(0, 8).map((p, i) => (
+              <img key={i} src={pieceImagePathX(p)} alt={p.type} style={{ width: 14, height: 14, objectFit: "contain", filter: "drop-shadow(0 1px 2px rgba(0,0,0,.8))" }} />
+            ))}
+            {captured.length > 8 && <span style={{ fontSize: 8.5, color: "rgba(220,200,165,.5)" }}>+{captured.length - 8}</span>}
+          </div>
+        )}
       </div>
-      {captured.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 3, maxHeight: 26, overflow: "hidden" }}>
-          {captured.slice(0, 8).map((p, i) => (
-            <img key={i} src={pieceImagePathX(p)} alt={p.type} style={{ width: 16, height: 16, objectFit: "contain", filter: "drop-shadow(0 1px 2px rgba(0,0,0,.8))" }} />
-          ))}
-          {captured.length > 8 && <span style={{ fontSize: 9, color: "rgba(220,200,165,.5)" }}>+{captured.length - 8}</span>}
-        </div>
-      )}
+      {!isElim && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 6px #4ade80", flexShrink: 0, animation: isActive ? "x8Pulse 1.5s infinite" : "none" }} />}
     </div>
+  );
+}
+
+// ─── COMPACT KINGDOM PILL (mobile-only strip) ───────────────────────────────
+function CompactPlayerPill({ color, name, isMe, isActive, isElim }: {
+  color: PlayerColorX; name: string; isMe: boolean; isActive: boolean; isElim: boolean;
+}) {
+  const ac = AC[color];
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 5, padding: "5px 8px", borderRadius: 10, minWidth: 0, flex: "1 1 0",
+      background: isElim ? "rgba(70,0,0,.4)" : "rgba(16,11,5,.75)",
+      border: `1px solid ${isElim ? "rgba(255,70,70,.3)" : isActive ? "rgba(212,168,67,.8)" : ac + "30"}`,
+      opacity: isElim ? .55 : 1,
+      boxShadow: isActive && !isElim ? "0 0 10px rgba(212,168,67,.4)" : "none",
+    }}>
+      <span style={{ width: 15, height: 15, borderRadius: "50%", background: ac, flexShrink: 0 }} />
+      <span style={{ fontSize: 9.5, fontWeight: 800, color: "#e8dfc0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{isMe ? "You" : name}</span>
+      {!isElim && <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 5px #4ade80", flexShrink: 0, marginLeft: "auto" }} />}
+    </div>
+  );
+}
+
+// ─── CONTROL CARD (right panel — icon badge + title + subtitle, matching the
+// design2 reference's "Game Controls" list) ────────────────────────────────
+function ControlCard({ icon, title, subtitle, accent, onClick, disabled, isMobile }: {
+  icon: string; title: string; subtitle: string; accent: string; onClick: () => void; disabled?: boolean; isMobile: boolean;
+}) {
+  return (
+    <button className="x8-btn" onClick={onClick} disabled={disabled}
+      style={{
+        display: "flex", alignItems: "flex-start", gap: 12, width: isMobile ? undefined : "100%", textAlign: "left",
+        padding: "13px 14px", borderRadius: 14, cursor: disabled ? "default" : "pointer", marginBottom: isMobile ? 0 : 12,
+        background: `linear-gradient(160deg,${accent}1c,${accent}0a)`, border: `1px solid ${accent}4a`, opacity: disabled ? .5 : 1,
+        fontFamily: "'Cinzel',Georgia,serif",
+        boxShadow: `0 8px 20px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.08)`,
+      }}>
+      <span style={{ width: 38, height: 38, borderRadius: 10, background: `${accent}26`, border: `1px solid ${accent}60`, boxShadow: `inset 0 1px 0 rgba(255,255,255,.15), 0 0 10px ${accent}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0 }}>{icon}</span>
+      {!isMobile && (
+        <span style={{ minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: accent, letterSpacing: ".06em", textTransform: "uppercase" }}>{title}</p>
+          <p style={{ margin: "3px 0 0", fontSize: 10.5, color: "rgba(220,220,230,.55)", lineHeight: 1.4 }}>{subtitle}</p>
+        </span>
+      )}
+      {isMobile && <span style={{ fontSize: 11, fontWeight: 800, color: accent, letterSpacing: ".05em", textTransform: "uppercase", alignSelf: "center" }}>{title}</span>}
+    </button>
   );
 }
 
 // ─── CROSS-SHAPE CLIP PATH ────────────────────────────────────────────────────
 // Traces the 12-vertex plus/cross outline in percentages of the 24x24 grid —
 // arms of 8 units meeting a shared 8x8 center, exactly matching the
-// reference image's silhouette.
+// reference image's silhouette. One single connected battlefield — never
+// four separate boards.
 const P1 = (8 / SIZE) * 100, P2 = (16 / SIZE) * 100;
 const CROSS_CLIP = `polygon(${P1}% 0%, ${P2}% 0%, ${P2}% ${P1}%, 100% ${P1}%, 100% ${P2}%, ${P2}% ${P2}%, ${P2}% 100%, ${P1}% 100%, ${P1}% ${P2}%, 0% ${P2}%, 0% ${P1}%, ${P1}% ${P1}%)`;
+// The 4 concave inner corners (where each arm meets the shared center) get a
+// small decorative gem accent, matching the reference board's frame detail.
+const GEM_CORNERS: [number, number][] = [[P1, P1], [P2, P1], [P1, P2], [P2, P2]];
 
 interface Props {
   myColor: PlayerColorX; roomId: string;
@@ -93,6 +243,7 @@ export default function BoardX8x8({ myColor, roomId, playerNames, onGameEnd, soc
   const [sqPx, setSqPx] = useState(20);
   const [isMobile, setIsMobile] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const gsRef = useRef(gs);
   useEffect(() => { gsRef.current = gs; }, [gs]);
@@ -104,18 +255,45 @@ export default function BoardX8x8({ myColor, roomId, playerNames, onGameEnd, soc
   const paladinSuperUsed = selPiece?.paladanSuperUsed ?? false;
 
   // ─── RESPONSIVE SIZE ────────────────────────────────────────────────────
+  // Desktop places the kingdom panel (left) and controls panel (right) NEXT
+  // TO the board rather than stacked above/below it, so the board's own
+  // budget is only constrained by the header/turn-indicator height and the
+  // two side panels' widths — never forces a size floor that would overflow
+  // small screens.
   useEffect(() => {
     const calc = () => {
-      const mobile = window.innerWidth <= 900;
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const mobile = vw <= 1000;
       setIsMobile(mobile);
-      const pad = mobile ? 12 : 24;
-      const chromeH = mobile ? 320 : 160; // header + player cards + controls
-      const maxByWidth = window.innerWidth - pad * 2;
-      const maxByHeight = window.innerHeight - chromeH;
-      const s = Math.min(maxByWidth, maxByHeight) / SIZE;
-      const floor = mobile ? 10 : 16;
-      const ceiling = 46;
-      setSqPx(Math.min(Math.max(Math.floor(s), floor), ceiling));
+
+      if (mobile) {
+        const outerPadX = 14;
+        const headerH = 66;
+        const cardsH = 40;
+        const turnH = 34;
+        const controlsH = 96;
+        const gaps = 14 * 4; // outer container gap between header/cards/turn/board/controls
+        const safety = 40;
+        const chromeH = headerH + cardsH + turnH + controlsH + gaps + safety;
+        const maxByWidth = vw - outerPadX * 2;
+        const maxByHeight = vh - chromeH;
+        const raw = Math.floor(Math.min(maxByWidth, maxByHeight) / SIZE);
+        setSqPx(Math.max(8, Math.min(raw, 34)));
+      } else {
+        const outerPadX = 28, outerPadY = 22;
+        const headerH = 108;
+        const outerGap = 26; // header -> row
+        const turnH = 42;
+        const centerColGap = 30; // turn indicator -> board, its own floating spacing
+        const panelW = 272;
+        const rowGap = 44; // left panel <-> board <-> right panel
+        const safety = 40;
+        const chromeH = headerH + outerGap + turnH + centerColGap + safety;
+        const maxByWidth = vw - outerPadX * 2 - panelW * 2 - rowGap * 2;
+        const maxByHeight = vh - outerPadY * 2 - chromeH;
+        const raw = Math.floor(Math.min(maxByWidth, maxByHeight) / SIZE);
+        setSqPx(Math.max(8, Math.min(raw, 74)));
+      }
     };
     calc();
     window.addEventListener("resize", calc);
@@ -241,6 +419,138 @@ export default function BoardX8x8({ myColor, roomId, playerNames, onGameEnd, soc
 
   // ─── OVERLAY DATA ───────────────────────────────────────────────────────
   const allColors: PlayerColorX[] = ["white", "grey", "black", "golden"];
+  const myGuideSet = new Set<PieceTypeX>();
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    const p = gs.board[r][c];
+    if (p && p.color === myColor) myGuideSet.add(p.type);
+  }
+
+  // ─── SHARED BLOCKS ──────────────────────────────────────────────────────
+  const turnIndicator = (
+    <div style={{ borderRadius: 10, padding: "8px 22px", display: "flex", alignItems: "center", gap: 9,
+      background: "rgba(8,6,3,.75)",
+      border: `1px solid ${isMyTurn ? "rgba(125,189,110,.45)" : "rgba(212,168,67,.35)"}`,
+      boxShadow: isMyTurn ? "0 0 20px rgba(125,189,110,.18)" : "0 8px 20px rgba(0,0,0,.45)" }}>
+      <span style={{ fontSize: 14 }}>{isMyTurn ? "⚔️" : "⏳"}</span>
+      <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: isMyTurn ? "#7dbd6e" : "#e8c96a" }}>
+        {gs.status === "finished" ? "Battle Over" : isMyTurn ? "Your Turn" : `${playerNames[gs.currentTurn] || gs.currentTurn}'s Turn`}
+      </span>
+    </div>
+  );
+
+  const boardBlock = (
+    // One connected cross-shaped battlefield, never four separate boards.
+    // Every frame layer below is an absolutely-positioned SIBLING (not a
+    // padded ancestor) so none of them can ever clip the grid's own edge
+    // cells. Layered bezel, outermost first: ambient halo → dark wood frame
+    // → gold metallic trim → dark bevel → black playing surface + grid.
+    // The halo's reach was previously wide enough (-60px) to visually bleed
+    // into the turn indicator and side panels even with real spacing between
+    // them — pulled in so the board reads as a clearly separate element.
+    <div style={{ position: "relative", width: boardPx, height: boardPx, animation: "x8FadeUp .5s ease", margin: isMobile ? "0 0 4px" : "0 0 6px" }}>
+      <div style={{
+        position: "absolute", inset: isMobile ? -20 : -30, borderRadius: "50%",
+        background: "radial-gradient(ellipse at center, rgba(212,168,67,.16), transparent 68%)",
+        zIndex: -1, pointerEvents: "none",
+      }} />
+      <div style={{
+        position: "absolute", inset: isMobile ? -13 : -22,
+        background: "linear-gradient(145deg,#4a2a0c,#251306,#120a03,#251306,#4a2a0c)",
+        clipPath: CROSS_CLIP,
+        filter: "drop-shadow(0 0 38px rgba(212,168,67,.2)) drop-shadow(0 28px 64px rgba(0,0,0,.9))",
+        zIndex: 0,
+      }} />
+      <div style={{
+        position: "absolute", inset: isMobile ? -7 : -12,
+        clipPath: CROSS_CLIP,
+        background: "linear-gradient(115deg,#8a6414 0%,#f5e09a 18%,#d4a843 38%,#8a6414 52%,#f5e09a 68%,#d4a843 86%,#8a6414 100%)",
+        backgroundSize: "260% auto",
+        animation: "x8TrimShine 7s linear infinite",
+        boxShadow: "inset 0 1px 1px rgba(255,255,255,.6), inset 0 -1px 2px rgba(0,0,0,.5)",
+        zIndex: 1,
+      }} />
+      <div style={{
+        position: "absolute", inset: isMobile ? -3 : -4,
+        clipPath: CROSS_CLIP, background: "#0a0602",
+        boxShadow: "inset 0 2px 6px rgba(0,0,0,.85)",
+        zIndex: 2,
+      }} />
+      <div style={{ position: "absolute", inset: 0, background: "#050505", clipPath: CROSS_CLIP, boxShadow: "inset 0 0 34px rgba(0,0,0,.65)", zIndex: 3 }}>
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${SIZE},${sqPx}px)`, gridTemplateRows: `repeat(${SIZE},${sqPx}px)`, width: boardPx, height: boardPx }}>
+          {Array.from({ length: SIZE }).map((_, row) => Array.from({ length: SIZE }).map((__, col) => {
+            if (!inPlayAreaX(row, col)) return <div key={`${row}-${col}`} style={{ width: sqPx, height: sqPx, pointerEvents: "none" }} />;
+
+            const piece = gs.board[row][col];
+            const sq = { row, col };
+            const isLight = (row + col) % 2 === 0;
+            const isSel = !!gs.selectedSquare && squareEqualsX(gs.selectedSquare, sq);
+            const isValid = gs.validMoves.some(m => squareEqualsX(m, sq));
+            const isSuper = gs.superMoves.some(m => squareEqualsX(m, sq));
+            const isCastleMove = gs.castleMoves.some(m => squareEqualsX(m, sq));
+            const isLF = !!gs.lastMove && squareEqualsX(gs.lastMove.from, sq);
+            const isLT = !!gs.lastMove && squareEqualsX(gs.lastMove.to, sq);
+            const isAnim = !!animSq && squareEqualsX(animSq, sq);
+
+            const baseBg = isLight ? "#c9a96e" : "#4a2e1a";
+            let ov = "";
+            if (isSel) ov = "rgba(212,168,67,.55)";
+            else if (isLF || isLT) ov = "rgba(212,168,67,.25)";
+            else if (isCastleMove) ov = "rgba(80,160,255,.18)";
+            if (gs.superMoveMode && !isSel && !isSuper) ov = ov || "rgba(0,0,0,.08)";
+
+            return (
+              <div key={`${row}-${col}`} className="x8sq" onClick={() => handleClick(row, col)} style={{ width: sqPx, height: sqPx, background: baseBg, position: "relative" }}>
+                {ov && <div style={{ position: "absolute", inset: 0, zIndex: 1, background: ov, pointerEvents: "none" }} />}
+                {isValid && !piece && <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: sqPx * .32, height: sqPx * .32, borderRadius: "50%", background: "rgba(212,168,67,.75)", boxShadow: "0 0 10px rgba(212,168,67,.6)", animation: "x8Dot .15s ease both", pointerEvents: "none", zIndex: 4 }} />}
+                {isValid && piece && <div style={{ position: "absolute", inset: Math.max(2, sqPx * .06), zIndex: 4, borderRadius: 4, border: "2px solid rgba(212,168,67,.9)", pointerEvents: "none" }} />}
+                {isSuper && !piece && <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: sqPx * .36, height: sqPx * .36, borderRadius: "50%", background: "rgba(255,140,0,.82)", boxShadow: "0 0 14px rgba(255,140,0,.7)", pointerEvents: "none", zIndex: 4 }} />}
+                {isSuper && piece && <div style={{ position: "absolute", inset: Math.max(2, sqPx * .06), zIndex: 4, borderRadius: 4, border: "2px solid rgba(255,140,0,.95)", pointerEvents: "none" }} />}
+                {isCastleMove && piece && <div style={{ position: "absolute", inset: Math.max(2, sqPx * .06), zIndex: 4, borderRadius: 4, border: "2px dashed rgba(80,160,255,.9)", pointerEvents: "none" }} />}
+                {piece && (
+                  <img src={pieceImagePathX(piece)} alt={piece.type} className="x8pi"
+                    style={{ animation: isAnim ? "x8In .32s ease both" : "none" }} />
+                )}
+              </div>
+            );
+          }))}
+        </div>
+      </div>
+      {/* Decorative gem accents at the board's inner (concave) corners */}
+      {GEM_CORNERS.map(([px, py], i) => (
+        <div key={i} style={{
+          position: "absolute", left: `${px}%`, top: `${py}%`, width: isMobile ? 8 : 12, height: isMobile ? 8 : 12,
+          transform: "translate(-50%,-50%) rotate(45deg)", zIndex: 4, pointerEvents: "none",
+          background: "linear-gradient(145deg,#8ed8f5,#3d8fc4)",
+          border: "1px solid rgba(255,255,255,.6)",
+          boxShadow: "0 0 10px rgba(94,200,240,.75), 0 2px 6px rgba(0,0,0,.6)",
+        }} />
+      ))}
+    </div>
+  );
+
+  const superAttackBtn = isMyTurn && selectedIsPaladin && (
+    <ControlCard isMobile={isMobile} icon="⚡" accent="#ffb347"
+      title={paladinSuperUsed ? "Super Used" : "Super Attack"}
+      subtitle="One-time 2-square strike"
+      disabled={paladinSuperUsed}
+      onClick={() => { if (!paladinSuperUsed) handleSuperAttack(); }} />
+  );
+  const passBtn = (
+    <ControlCard isMobile={isMobile} icon="⏩" accent="#60a5fa" title="Pass Turn" subtitle="Skip your turn"
+      disabled={!isMyTurn} onClick={handlePass} />
+  );
+  const guideBtn = (
+    <ControlCard isMobile={isMobile} icon="📖" accent="#c084fc" title="Battle Guide" subtitle="View all pieces and abilities"
+      onClick={() => setShowGuide(true)} />
+  );
+  const rulesBtn = (
+    <ControlCard isMobile={isMobile} icon="📜" accent="#4ade80" title="Game Rules" subtitle="Learn how to play and win"
+      onClick={() => setShowRules(true)} />
+  );
+  const quitBtn = !gs.eliminatedPlayers.includes(myColor) && gs.status === "playing" && (
+    <ControlCard isMobile={isMobile} icon="🚩" accent="#f87171" title="Quit Game" subtitle="Exit the current match"
+      onClick={() => setShowQuitConfirm(true)} />
+  );
 
   return (
     <>
@@ -251,122 +561,104 @@ export default function BoardX8x8({ myColor, roomId, playerNames, onGameEnd, soc
         @keyframes x8In{0%{opacity:.3;transform:translate(-50%,-50%) scale(.65)}100%{opacity:1;transform:translate(-50%,-50%) scale(1)}}
         @keyframes x8Dot{0%{opacity:0;transform:translate(-50%,-50%) scale(.2)}80%{transform:translate(-50%,-50%) scale(1.2)}100%{opacity:1;transform:translate(-50%,-50%) scale(1)}}
         @keyframes x8FadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes x8Shimmer{0%{background-position:-200% center}100%{background-position:200% center}}
+        @keyframes x8Float{0%,100%{transform:translateY(0) rotateY(0deg)}50%{transform:translateY(-4px) rotateY(12deg)}}
+        @keyframes x8TipIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes x8Pulse2{0%,100%{box-shadow:0 0 0 0 rgba(125,189,110,.5)}50%{box-shadow:0 0 0 5px rgba(125,189,110,0)}}
+        @keyframes x8TrimShine{0%{background-position:-200% center}100%{background-position:200% center}}
         .x8sq{position:relative;overflow:hidden;cursor:pointer;transition:filter .1s;}
         .x8sq:hover{filter:brightness(1.2);}
-        .x8pi{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:80%;height:80%;object-fit:contain;pointer-events:none;filter:drop-shadow(0 3px 6px rgba(0,0,0,.9));}
+        .x8-btn{backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease,background .18s ease;box-shadow:0 6px 18px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.06);}
+        .x8-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 26px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.12);}
+        .x8-btn:active:not(:disabled){transform:translateY(0) scale(.98);}
+        .x8-btn:disabled{cursor:default;}
+        .x8pi{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:82%;height:82%;object-fit:contain;pointer-events:none;filter:drop-shadow(0 3px 6px rgba(0,0,0,.9));}
+        .x8-rule-card{padding:16px 18px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid rgba(212,168,67,.1);transition:border-color .2s,background .2s;display:flex;gap:16px;align-items:flex-start;}
+        .x8-rule-card:hover{background:rgba(212,168,67,.05);border-color:rgba(212,168,67,.22);}
+        .x8-icon{display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:14px;font-size:24px;flex-shrink:0;animation:x8Float 3s ease-in-out infinite;user-select:none;}
+        .x8-modal-scroll::-webkit-scrollbar{width:5px;}
+        .x8-modal-scroll::-webkit-scrollbar-track{background:transparent;}
+        .x8-modal-scroll::-webkit-scrollbar-thumb{background:rgba(212,168,67,.25);border-radius:5px;}
       `}</style>
 
       <div style={{
         minHeight: "100vh", width: "100%", maxWidth: "100vw", overflowX: "hidden", boxSizing: "border-box",
-        background: "radial-gradient(ellipse at 50% -5%,#1c0f04 0%,#080503 50%,#020101 100%)",
+        background: "radial-gradient(ellipse at 50% -10%,#100c06 0%,#07060a 55%,#020103 100%)",
         display: "flex", flexDirection: "column", alignItems: "center",
-        padding: isMobile ? "18px 10px 24px" : "20px 24px", gap: 16, fontFamily: "'Cinzel',Georgia,serif",
+        padding: isMobile ? "12px 14px 18px" : "20px 28px", gap: isMobile ? 14 : 26, fontFamily: "'Cinzel',Georgia,serif",
       }}>
-        {/* Header */}
-        <div style={{ textAlign: "center" }}>
-          <h1 style={{ margin: 0, fontSize: isMobile ? 20 : 28, color: "#e8c96a", letterSpacing: ".08em", textShadow: "0 0 30px rgba(212,168,67,.4)" }}>8×8 X Board</h1>
-          <p style={{ margin: "4px 0 0", fontSize: 11, color: "rgba(212,168,67,.5)", letterSpacing: ".1em", textTransform: "uppercase" }}>Four Kingdoms · One Battlefield</p>
-        </div>
-
-        {/* Player cards — top row (all 4, since arms don't have room for individually-attached panels at every viewport) */}
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4,1fr)", gap: 8, width: "100%", maxWidth: boardPx + 40 }}>
-          {allColors.map(c => (
-            <PlayerMiniCard key={c} color={c} name={playerNames[c] || c} isMe={c === myColor}
-              isActive={gs.currentTurn === c && gs.status === "playing"}
-              isElim={gs.eliminatedPlayers.includes(c)}
-              captured={gs.capturedBy[c]} />
-          ))}
-        </div>
-
-        {/* Turn indicator */}
-        <div style={{ borderRadius: 12, padding: "9px 18px", display: "flex", alignItems: "center", gap: 8,
-          background: isMyTurn ? "rgba(125,189,110,.1)" : "rgba(0,0,0,.35)",
-          border: `1px solid ${isMyTurn ? "rgba(125,189,110,.3)" : "rgba(255,255,255,.08)"}` }}>
-          <span style={{ fontSize: 15 }}>{isMyTurn ? "⚔️" : "⏳"}</span>
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: isMyTurn ? "#7dbd6e" : "rgba(220,210,180,.55)" }}>
-            {gs.status === "finished" ? "Battle Over" : isMyTurn ? "Your Move" : `${playerNames[gs.currentTurn] || gs.currentTurn}'s Turn`}
-          </span>
-        </div>
-
-        {/* Board */}
-        <div style={{ position: "relative", animation: "x8FadeUp .5s ease" }}>
-          <div style={{
-            position: "relative", width: boardPx, height: boardPx, padding: isMobile ? 6 : 10,
-            background: "linear-gradient(145deg,#3d1f08,#1e0e04,#0e0702,#1e0e04,#3d1f08)",
-            clipPath: CROSS_CLIP,
-            boxShadow: "0 0 60px rgba(212,168,67,.12), 0 30px 90px rgba(0,0,0,.95)",
-          }}>
-            <div style={{ position: "relative", width: "100%", height: "100%", background: "#050505", clipPath: CROSS_CLIP }}>
-              <div style={{ display: "grid", gridTemplateColumns: `repeat(${SIZE},${sqPx}px)`, gridTemplateRows: `repeat(${SIZE},${sqPx}px)` }}>
-                {Array.from({ length: SIZE }).map((_, row) => Array.from({ length: SIZE }).map((__, col) => {
-                  if (!inPlayAreaX(row, col)) return <div key={`${row}-${col}`} style={{ width: sqPx, height: sqPx, pointerEvents: "none" }} />;
-
-                  const piece = gs.board[row][col];
-                  const sq = { row, col };
-                  const isLight = (row + col) % 2 === 0;
-                  const isSel = !!gs.selectedSquare && squareEqualsX(gs.selectedSquare, sq);
-                  const isValid = gs.validMoves.some(m => squareEqualsX(m, sq));
-                  const isSuper = gs.superMoves.some(m => squareEqualsX(m, sq));
-                  const isCastleMove = gs.castleMoves.some(m => squareEqualsX(m, sq));
-                  const isLF = !!gs.lastMove && squareEqualsX(gs.lastMove.from, sq);
-                  const isLT = !!gs.lastMove && squareEqualsX(gs.lastMove.to, sq);
-                  const isAnim = !!animSq && squareEqualsX(animSq, sq);
-
-                  const baseBg = isLight ? "#c9a96e" : "#4a2e1a";
-                  let ov = "";
-                  if (isSel) ov = "rgba(212,168,67,.55)";
-                  else if (isLF || isLT) ov = "rgba(212,168,67,.25)";
-                  else if (isCastleMove) ov = "rgba(80,160,255,.18)";
-                  if (gs.superMoveMode && !isSel && !isSuper) ov = ov || "rgba(0,0,0,.08)";
-
-                  return (
-                    <div key={`${row}-${col}`} className="x8sq" onClick={() => handleClick(row, col)} style={{ width: sqPx, height: sqPx, background: baseBg, position: "relative" }}>
-                      {ov && <div style={{ position: "absolute", inset: 0, zIndex: 1, background: ov, pointerEvents: "none" }} />}
-                      {isValid && !piece && <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: sqPx * .32, height: sqPx * .32, borderRadius: "50%", background: "rgba(212,168,67,.75)", boxShadow: "0 0 10px rgba(212,168,67,.6)", animation: "x8Dot .15s ease both", pointerEvents: "none", zIndex: 4 }} />}
-                      {isValid && piece && <div style={{ position: "absolute", inset: Math.max(2, sqPx * .06), zIndex: 4, borderRadius: 4, border: "2px solid rgba(212,168,67,.9)", pointerEvents: "none" }} />}
-                      {isSuper && !piece && <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: sqPx * .36, height: sqPx * .36, borderRadius: "50%", background: "rgba(255,140,0,.82)", boxShadow: "0 0 14px rgba(255,140,0,.7)", pointerEvents: "none", zIndex: 4 }} />}
-                      {isSuper && piece && <div style={{ position: "absolute", inset: Math.max(2, sqPx * .06), zIndex: 4, borderRadius: 4, border: "2px solid rgba(255,140,0,.95)", pointerEvents: "none" }} />}
-                      {isCastleMove && piece && <div style={{ position: "absolute", inset: Math.max(2, sqPx * .06), zIndex: 4, borderRadius: 4, border: "2px dashed rgba(80,160,255,.9)", pointerEvents: "none" }} />}
-                      {piece && (
-                        <img src={pieceImagePathX(piece)} alt={piece.type} className="x8pi"
-                          style={{ animation: isAnim ? "x8In .32s ease both" : "none" }} />
-                      )}
-                    </div>
-                  );
-                }))}
-              </div>
-            </div>
+        {/* Header — crown + flanking ornament, large premium shimmer title */}
+        <div style={{ textAlign: "center", width: "100%" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: isMobile ? 8 : 14, marginBottom: 2 }}>
+            <span style={{ width: isMobile ? 24 : 56, height: 1, background: "linear-gradient(90deg,transparent,rgba(212,168,67,.55))" }} />
+            <span style={{ fontSize: isMobile ? 14 : 20, filter: "drop-shadow(0 0 8px rgba(212,168,67,.5))" }}>👑</span>
+            <span style={{ width: isMobile ? 24 : 56, height: 1, background: "linear-gradient(90deg,rgba(212,168,67,.55),transparent)" }} />
           </div>
+          <h1 style={{
+            margin: 0, fontSize: isMobile ? 26 : 46, fontWeight: 700, letterSpacing: isMobile ? ".05em" : ".07em",
+            background: "linear-gradient(135deg,#e8c96a 0%,#f5e09a 40%,#c8a030 100%)",
+            backgroundSize: "200% auto", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+            animation: "x8Shimmer 3s linear infinite",
+            textShadow: "0 0 44px rgba(212,168,67,.28)",
+          }}>
+            8×8 X Board
+          </h1>
+          <p style={{ margin: isMobile ? "5px 0 0" : "8px 0 0", fontSize: isMobile ? 10 : 12.5, color: "rgba(212,168,67,.6)", letterSpacing: ".22em", textTransform: "uppercase" }}>
+            Four Kingdoms <span style={{ color: "rgba(212,168,67,.9)" }}>✦</span> One Battlefield
+          </p>
         </div>
 
-        {/* Controls */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", width: "100%", maxWidth: boardPx + 40 }}>
-          {isMyTurn && selectedIsPaladin && (
-            <button onClick={() => { if (!paladinSuperUsed) handleSuperAttack(); }} disabled={paladinSuperUsed}
-              style={{ padding: "10px 18px", borderRadius: 12, cursor: paladinSuperUsed ? "default" : "pointer",
-                background: paladinSuperUsed ? "rgba(42,32,18,.6)" : "linear-gradient(135deg,rgba(255,160,35,.65),rgba(80,42,8,.75))",
-                border: `1px solid ${paladinSuperUsed ? "rgba(120,90,45,.2)" : "rgba(255,170,60,.42)"}`,
-                color: paladinSuperUsed ? "rgba(170,130,70,.5)" : "#ffc46b", fontSize: 12, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", fontFamily: "'Cinzel',Georgia,serif" }}>
-              ⚡ {paladinSuperUsed ? "Super Used" : "Super Attack"}
-            </button>
-          )}
-          <button onClick={handlePass} disabled={!isMyTurn}
-            style={{ padding: "10px 18px", borderRadius: 12, cursor: isMyTurn ? "pointer" : "default",
-              background: isMyTurn ? "rgba(9,95,190,.28)" : "rgba(4,10,28,.5)", border: `1px solid ${isMyTurn ? "rgba(150,150,255,.45)" : "rgba(255,255,255,.1)"}`,
-              color: isMyTurn ? "#c7c9ff" : "rgba(220,220,235,.4)", fontSize: 12, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", fontFamily: "'Cinzel',Georgia,serif" }}>
-            ⏭️ Pass Turn
-          </button>
-          <button onClick={() => setShowRules(true)}
-            style={{ padding: "10px 18px", borderRadius: 12, cursor: "pointer", background: "#080a08", color: "#4ade80", border: "1px solid rgba(74,222,128,.35)", fontSize: 12, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", fontFamily: "'Cinzel',Georgia,serif" }}>
-            Game Rules
-          </button>
-          {!gs.eliminatedPlayers.includes(myColor) && gs.status === "playing" && (
-            <button onClick={() => setShowQuitConfirm(true)}
-              style={{ padding: "10px 18px", borderRadius: 12, cursor: "pointer", background: "#080808", color: "#f87171", border: "1px solid rgba(248,113,113,.3)", fontSize: 12, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", fontFamily: "'Cinzel',Georgia,serif" }}>
-              Quit Game
-            </button>
-          )}
-        </div>
+        {isMobile ? (
+          <>
+            {/* Compact player strip — all 4 kingdoms visible without eating the board's vertical room */}
+            <div style={{ display: "flex", gap: 6, width: "100%", maxWidth: boardPx + 40 }}>
+              {allColors.map(c => (
+                <CompactPlayerPill key={c} color={c} name={playerNames[c] || c} isMe={c === myColor}
+                  isActive={gs.currentTurn === c && gs.status === "playing"}
+                  isElim={gs.eliminatedPlayers.includes(c)} />
+              ))}
+            </div>
+
+            {turnIndicator}
+            {boardBlock}
+
+            {/* Controls row */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", width: "100%", maxWidth: boardPx + 40 }}>
+              {superAttackBtn}
+              {passBtn}
+              {guideBtn}
+              {rulesBtn}
+              {quitBtn}
+            </div>
+          </>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "row", gap: 44, alignItems: "flex-start", justifyContent: "center", width: "100%" }}>
+            {/* LEFT — The Four Kingdoms */}
+            <PanelFrame title="The Four Kingdoms" isMobile={false}>
+              {allColors.map(c => (
+                <KingdomCard key={c} color={c} name={playerNames[c] || c} isMe={c === myColor}
+                  isActive={gs.currentTurn === c && gs.status === "playing"}
+                  isElim={gs.eliminatedPlayers.includes(c)}
+                  captured={gs.capturedBy[c]} />
+              ))}
+            </PanelFrame>
+
+            {/* CENTER — turn indicator, floating clear of the board, then the board itself */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 30 }}>
+              {turnIndicator}
+              {boardBlock}
+            </div>
+
+            {/* RIGHT — Game Controls */}
+            <PanelFrame title="Game Controls" isMobile={false}>
+              {superAttackBtn}
+              {passBtn}
+              {guideBtn}
+              {rulesBtn}
+              {quitBtn}
+            </PanelFrame>
+          </div>
+        )}
 
         {/* ── PALADIN RETRIEVAL ── */}
         {gs.pendingRetrieve && gs.pendingRetrieve.color === myColor && (() => {
@@ -391,20 +683,107 @@ export default function BoardX8x8({ myColor, roomId, playerNames, onGameEnd, soc
           );
         })()}
 
+        {/* ── BATTLE GUIDE MODAL ── */}
+        {showGuide && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 111, background: "rgba(0,0,0,.88)", backdropFilter: "blur(16px)", display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? 14 : 24 }}>
+            <div className="x8-modal-scroll" style={{ width: isMobile ? "96vw" : "min(760px,92vw)", maxHeight: "90vh", overflowY: "auto", borderRadius: 26, padding: isMobile ? "24px 18px" : "34px 34px", background: "linear-gradient(155deg,#0e0902 0%,#1a1005 40%,#0e0902 100%)", border: "1px solid rgba(212,168,67,.22)", fontFamily: "'Cinzel',Georgia,serif" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 27, color: "#e8c96a" }}>🧭 Battle Guide</h2>
+                  <p style={{ margin: "5px 0 0", fontSize: 10, color: "rgba(255,255,255,.5)", letterSpacing: ".1em", textTransform: "uppercase" }}>Pieces · Powers · Combat</p>
+                </div>
+                <button onClick={() => setShowGuide(false)} style={{ width: 42, height: 42, borderRadius: 11, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.5)", cursor: "pointer", fontSize: 18, flexShrink: 0 }}>✕</button>
+              </div>
+              <p style={{ margin: "8px 0 20px", fontSize: 12.5, color: "rgba(212,168,67,.55)", fontStyle: "italic" }}>💡 Hover (or tap) any piece for its full ability.</p>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
+                {(Object.keys(PIECE_GUIDE_INFO) as PieceTypeX[]).map(type => (
+                  <BattleGuideCardX key={type} pieceKey={type} info={PIECE_GUIDE_INFO[type]} has={myGuideSet.has(type)} />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── RULES MODAL ── */}
         {showRules && (
-          <div style={{ position: "fixed", inset: 0, zIndex: 110, background: "rgba(0,0,0,.88)", backdropFilter: "blur(16px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-            <div style={{ width: "min(640px,96vw)", maxHeight: "88vh", overflowY: "auto", borderRadius: 24, padding: "28px 20px", background: "linear-gradient(155deg,#0e0902 0%,#1a1005 40%,#0e0902 100%)", border: "1px solid rgba(212,168,67,.22)", fontFamily: "'Cinzel',Georgia,serif" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                <h2 style={{ margin: 0, fontSize: 22, color: "#e8c96a" }}>⚔️ X Board Rules</h2>
-                <button onClick={() => setShowRules(false)} style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.5)", cursor: "pointer", fontSize: 16 }}>✕</button>
+          <div style={{ position: "fixed", inset: 0, zIndex: 110, background: "rgba(0,0,0,.88)", backdropFilter: "blur(16px)", display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? 14 : 24 }}>
+            <div className="x8-modal-scroll" style={{ width: isMobile ? "96vw" : "min(860px,94vw)", maxHeight: "90vh", overflowY: "auto", borderRadius: 26, padding: isMobile ? "24px 18px" : "34px 34px", background: "linear-gradient(155deg,#0e0902 0%,#1a1005 40%,#0e0902 100%)", border: "1px solid rgba(212,168,67,.22)", fontFamily: "'Cinzel',Georgia,serif" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 28, color: "#e8c96a" }}>⚔️ X Board Rules</h2>
+                <button onClick={() => setShowRules(false)} style={{ width: 42, height: 42, borderRadius: 11, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.5)", cursor: "pointer", fontSize: 18 }}>✕</button>
               </div>
-              <div style={{ display: "grid", gap: 12, fontSize: 13, color: "rgba(215,194,154,.8)", lineHeight: 1.7 }}>
-                <p><span style={{ color: "#e8c96a" }}>4-Player Battlefield:</span> four 8×8 armies (Top / Right / Bottom / Left) meet in one shared cross-shaped board, with a common center all four sides can fight through.</p>
-                <p><span style={{ color: "#e8c96a" }}>Pieces & abilities:</span> identical to 8×8 Classic War — King, Queen, Bishop, Rook, Knight move exactly as usual. Paladins move 1 square any direction, and each keeps its one-time 2–3 square Super Attack, Reverse Castle (swap with an adjacent ally), and Back-Rank Retrieval (reach any opponent's home edge to bring back one of your own captured pieces).</p>
-                <p><span style={{ color: "#e8c96a" }}>Victory:</span> capturing a King does not end the game. A player is eliminated only once their entire army is gone, or if they quit. The last player standing wins.</p>
-                <p><span style={{ color: "#e8c96a" }}>Pass Turn:</span> Mexican Standoff — you may pass on your turn anytime, unlimited times.</p>
-                <p><span style={{ color: "#e8c96a" }}>Turn order:</span> Top → Right → Bottom → Left, repeating (skipping any eliminated player).</p>
+              <p style={{ margin: "0 0 20px", textAlign: "center", fontSize: 12.5, color: "rgba(212,168,67,.55)", fontStyle: "italic" }}>
+                💡 Looking for piece abilities? Open the Battle Guide.
+              </p>
+
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
+                <div className="x8-rule-card">
+                  <div className="x8-icon" style={{ background: "linear-gradient(145deg,#2a1a06,#3d2a0e)", boxShadow: "0 8px 20px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,220,100,.2)" }}>🗺️</div>
+                  <div>
+                    <h3 style={{ margin: "0 0 7px", color: "#e8c96a", fontSize: 13, letterSpacing: ".1em", textTransform: "uppercase" }}>Four-Player Battlefield</h3>
+                    <p style={{ margin: 0, color: "rgba(215,194,154,.75)", lineHeight: 1.75, fontSize: 13 }}>
+                      Four 8×8 armies — <span style={{ color: "#e8c96a" }}>Top, Right, Bottom, Left</span> — are merged into one connected cross-shaped board with a shared 8×8 center. Every side can fight through the middle to reach any other side.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="x8-rule-card">
+                  <div className="x8-icon" style={{ background: "linear-gradient(145deg,#0e2010,#14300f)", boxShadow: "0 8px 20px rgba(0,0,0,.6),inset 0 1px 0 rgba(150,220,120,.2)" }}>🔄</div>
+                  <div>
+                    <h3 style={{ margin: "0 0 7px", color: "#a0e090", fontSize: 13, letterSpacing: ".1em", textTransform: "uppercase" }}>Turn Order</h3>
+                    <p style={{ margin: 0, color: "rgba(215,194,154,.75)", lineHeight: 1.75, fontSize: 13 }}>
+                      Turns rotate clockwise: <span style={{ color: "#a0e090" }}>Top → Right → Bottom → Left</span>, then back to Top. An eliminated player is skipped automatically — the rotation always continues among whoever remains.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="x8-rule-card">
+                  <div className="x8-icon" style={{ background: "linear-gradient(145deg,#1a0e20,#241030)", boxShadow: "0 8px 20px rgba(0,0,0,.6),inset 0 1px 0 rgba(200,150,220,.2)" }}>🤺</div>
+                  <div>
+                    <h3 style={{ margin: "0 0 7px", color: "#d0a0e8", fontSize: 13, letterSpacing: ".1em", textTransform: "uppercase" }}>How Players Interact</h3>
+                    <p style={{ margin: 0, color: "rgba(215,194,154,.75)", lineHeight: 1.75, fontSize: 13 }}>
+                      You may move onto or capture a piece belonging to <span style={{ color: "#d0a0e8" }}>any</span> of the other three kingdoms — not just the player before or after you in turn order. Alliances aren't tracked; every other color is a valid target.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="x8-rule-card">
+                  <div className="x8-icon" style={{ background: "linear-gradient(145deg,#200e0e,#301010)", boxShadow: "0 8px 20px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,150,150,.2)" }}>⚔️</div>
+                  <div>
+                    <h3 style={{ margin: "0 0 7px", color: "#ff9090", fontSize: 13, letterSpacing: ".1em", textTransform: "uppercase" }}>Capture Rules</h3>
+                    <p style={{ margin: 0, color: "rgba(215,194,154,.75)", lineHeight: 1.75, fontSize: 13 }}>
+                      Move a piece onto an enemy-occupied square to capture it. Captured pieces are held by whoever took them — a Paladin reaching an opponent's home edge can bring one of its own fallen pieces back into play (Back-Rank Retrieval).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="x8-rule-card" style={{ background: "rgba(255,215,0,.04)", borderColor: "rgba(255,215,0,.18)", flexDirection: "column", gap: 10, gridColumn: isMobile ? "auto" : "1 / -1" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <div className="x8-icon" style={{ background: "linear-gradient(145deg,#1a1400,#2e2400)", boxShadow: "0 8px 18px rgba(0,0,0,.55),0 0 14px rgba(255,215,0,.35),inset 0 1px 0 rgba(255,240,100,.15)" }}>👑</div>
+                    <h3 style={{ margin: 0, color: "#ffd700", fontSize: 13, letterSpacing: ".08em", textTransform: "uppercase" }}>Winning / Elimination</h3>
+                    <span style={{ marginLeft: "auto", padding: "3px 10px", borderRadius: 20, background: "rgba(255,80,80,.15)", border: "1px solid rgba(255,100,100,.4)", color: "#ff9090", fontSize: 9.5, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase" }}>🚫 Not King-Capture</span>
+                  </div>
+                  <p style={{ margin: 0, color: "rgba(215,194,154,.7)", lineHeight: 1.75, fontSize: 12.5 }}>
+                    Capturing a King never ends the game by itself. A kingdom is <strong style={{ color: "#ffd700" }}>eliminated</strong> only once every one of its pieces is gone from the board, or its player quits. The battle continues among whoever remains — down to three, then two — until a single kingdom stands alone as the winner.
+                  </p>
+                </div>
+
+                <div className="x8-rule-card" style={{ background: "rgba(100,120,200,.04)", borderColor: "rgba(100,120,200,.18)", flexDirection: "column", gap: 10, gridColumn: isMobile ? "auto" : "1 / -1" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <div className="x8-icon" style={{ background: "linear-gradient(145deg,#0a0e1a,#121828)", boxShadow: "0 8px 18px rgba(0,0,0,.55),0 0 14px rgba(100,120,255,.3),inset 0 1px 0 rgba(150,170,255,.1)" }}>🤝</div>
+                    <h3 style={{ margin: 0, color: "#9090e8", fontSize: 13, letterSpacing: ".08em", textTransform: "uppercase" }}>Pass Turn</h3>
+                    <span style={{ marginLeft: "auto", padding: "3px 10px", borderRadius: 20, background: "rgba(125,189,110,.15)", border: "1px solid rgba(125,189,110,.4)", color: "#a0e090", fontSize: 9.5, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", animation: "x8Pulse2 2s infinite" }}>♾️ Unlimited</span>
+                  </div>
+                  <p style={{ margin: 0, color: "rgba(215,194,154,.7)", lineHeight: 1.75, fontSize: 12.5 }}>
+                    <span style={{ color: "#9090e8" }}>Mexican Standoff</span> — you don't have to move. Pass your turn anytime, as many times as you like.
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ textAlign: "center", padding: "16px 0 2px", borderTop: "1px solid rgba(212,168,67,.1)", marginTop: 16 }}>
+                <p style={{ margin: 0, fontSize: 11.5, color: "rgba(212,168,67,.35)", letterSpacing: ".1em", fontStyle: "italic" }}>
+                  "Four crowns, one battlefield — only one kingdom walks away."
+                </p>
               </div>
             </div>
           </div>
