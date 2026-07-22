@@ -1,12 +1,13 @@
 // ─── 8x8 X BOARD — 4-player cross-shaped board ────────────────────────────────
-// Four 8x8 "Classic War" armies (Top / Right / Bottom / Left) merged into one
-// 24x24 grid with the four corner 8x8 blocks removed, leaving a plus/cross
-// shape whose four arms all open onto a shared 8x8 center. Every piece type's
-// movement, the Paladin's Super Strike / Reverse Castle / Back-Rank
-// Retrieval, unlimited Pass Turn, and elimination-only win/lose logic are
-// copied verbatim in spirit from lib/game/rules-8x8.ts — only the board
-// shape/size and the 2-player -> 4-player turn/elimination bookkeeping are
-// new. No new abilities are introduced.
+// Four 8x8 "Classic War" armies (Top / Right / Bottom / Left), each trimmed to
+// its outer 8-wide x 4-deep strip (back rank + paladin rank + 2 empty ranks),
+// merged into one 16x16 grid with the four corner 4x4 blocks removed, leaving
+// a compact plus/cross shape whose four arms all open onto a shared 8x8
+// center. Every piece type's movement, the Paladin's Super Strike / Reverse
+// Castle / Back-Rank Retrieval, unlimited Pass Turn, and elimination-only
+// win/lose logic are copied verbatim in spirit from lib/game/rules-8x8.ts —
+// only the board shape/size and the 2-player -> 4-player turn/elimination
+// bookkeeping are new. No new abilities are introduced.
 
 export type PieceTypeX = "king" | "queen" | "rook" | "bishop" | "knight" | "paladin";
 // Matches lib/lobby/types.ts MODE_CONFIG["x-8x8"].colors (White/Black/Grey/
@@ -25,11 +26,11 @@ export interface PieceX {
 export interface SquareX { row: number; col: number; }
 export type BoardX = (PieceX | null)[][];
 
-export const SIZE = 24;
-export const ARM = 8;
+export const SIZE = 16;
+export const ARM = 4;
 // The center 8x8 block every arm opens onto.
-export const CENTER_LO = 8;
-export const CENTER_HI = 15;
+export const CENTER_LO = 4;
+export const CENTER_HI = 11;
 
 // Which side of the cross each color starts on, and which way they face.
 // Top = white, Right = grey, Bottom = black, Left = golden — clockwise,
@@ -57,10 +58,10 @@ export interface GameStateX {
 }
 
 // ─── BOARD SHAPE ────────────────────────────────────────────────────────────
-// Valid cells are the whole 24x24 grid MINUS the four 8x8 corner blocks —
+// Valid cells are the whole 16x16 grid MINUS the four 4x4 corner blocks —
 // i.e. everywhere except where both the row and the column fall outside the
-// center band [8,15]. This yields the cross/plus silhouette from the
-// reference image: four 8x8 arms all sharing one 8x8 center.
+// center band [4,11]. This yields the compact cross/plus silhouette from the
+// reference image: four 8-wide x 4-deep arms all sharing one 8x8 center.
 export function inPlayAreaX(r: number, c: number): boolean {
   if (r < 0 || r >= SIZE || c < 0 || c >= SIZE) return false;
   const rowOutsideCenter = r < CENTER_LO || r > CENTER_HI;
@@ -90,38 +91,38 @@ export function cloneGameStateX(state: GameStateX): GameStateX {
 }
 
 // ─── INITIAL BOARD ──────────────────────────────────────────────────────────
-// Each player's own arm gets the exact classic 8x8 setup — back row
+// Each player's own 8-wide x 4-deep arm gets the classic 8x8 back rank
 // (Rook,Knight,Bishop,King,Queen,Bishop,Knight,Rook) at their outermost
-// edge, Paladin front row one step in — just rotated to face inward
-// toward the shared center, same as the original 8x8 setup rotated to
-// face the opponent.
+// edge, Paladin front row one step in, and 2 empty ranks connecting to the
+// shared center — rotated to face inward, same as the original 8x8 setup
+// rotated to face the opponent.
 const BACK: PieceTypeX[] = ["rook", "knight", "bishop", "king", "queen", "bishop", "knight", "rook"];
 
 export function createInitialBoardX(): BoardX {
   const b: BoardX = Array(SIZE).fill(null).map(() => Array(SIZE).fill(null));
 
-  // Top (white): back row = row 0, front row (paladins) = row 1, cols 8-15.
+  // Top (white): back row = row 0, front row (paladins) = row 1, cols 4-11.
   BACK.forEach((type, i) => {
     const col = CENTER_LO + i;
     b[0][col] = { type, color: "white", id: `white-${type}-${i}`, hasMoved: false, paladanSuperUsed: false };
     b[1][col] = { type: "paladin", color: "white", id: `white-pal-${i}`, hasMoved: false, paladanSuperUsed: false };
   });
 
-  // Bottom (black): back row = row 23, front row = row 22, cols 8-15.
+  // Bottom (black): back row = row 15, front row = row 14, cols 4-11.
   BACK.forEach((type, i) => {
     const col = CENTER_LO + i;
     b[SIZE - 1][col] = { type, color: "black", id: `black-${type}-${i}`, hasMoved: false, paladanSuperUsed: false };
     b[SIZE - 2][col] = { type: "paladin", color: "black", id: `black-pal-${i}`, hasMoved: false, paladanSuperUsed: false };
   });
 
-  // Left (golden): back row = col 0, front row = col 1, rows 8-15.
+  // Left (golden): back row = col 0, front row = col 1, rows 4-11.
   BACK.forEach((type, i) => {
     const row = CENTER_LO + i;
     b[row][0] = { type, color: "golden", id: `golden-${type}-${i}`, hasMoved: false, paladanSuperUsed: false };
     b[row][1] = { type: "paladin", color: "golden", id: `golden-pal-${i}`, hasMoved: false, paladanSuperUsed: false };
   });
 
-  // Right (grey): back row = col 23, front row = col 22, rows 8-15.
+  // Right (grey): back row = col 15, front row = col 14, rows 4-11.
   BACK.forEach((type, i) => {
     const row = CENTER_LO + i;
     b[row][SIZE - 1] = { type, color: "grey", id: `grey-${type}-${i}`, hasMoved: false, paladanSuperUsed: false };
@@ -262,21 +263,17 @@ function countPiecesX(board: BoardX, color: PlayerColorX): number {
   return n;
 }
 
-function applyEliminationCheckX(ns: GameStateX): GameStateX {
-  const remaining = ns.turnOrder.filter(c => countPiecesX(ns.board, c) > 0);
-  const newlyEliminated = ns.turnOrder.filter(c => !remaining.includes(c));
-  if (newlyEliminated.length > 0) {
-    ns.eliminatedPlayers = [...ns.eliminatedPlayers, ...newlyEliminated];
-    ns.justEliminated = newlyEliminated[0];
-  }
-  ns.turnOrder = remaining;
-  if (remaining.length <= 1) {
-    ns.status = "finished";
-    ns.winner = remaining[0] ?? null;
-    ns.currentTurn = ns.winner ?? ns.currentTurn;
-  }
-  return ns;
+// Remaining (still-active) players among the currently active turn order.
+function getRemainingPlayersX(board: BoardX, turnOrder: PlayerColorX[]): PlayerColorX[] {
+  return turnOrder.filter(c => countPiecesX(board, c) > 0);
 }
+
+// eliminatedPlayers is always recomputed against the FULL original TURN_ORDER
+// (never against the already-shrunk turnOrder) so it's idempotent and
+// self-correcting on every call — a color eliminated on move N can't
+// silently "come back" because some later call only compared against a
+// partial list. Only one color changes state per call (the mover, or a
+// single quitter), so at most one color newly joins eliminatedPlayers here.
 
 function advanceTurnColor(ns: GameStateX): PlayerColorX {
   const idx = ns.turnOrder.indexOf(ns.currentTurn);
@@ -313,11 +310,21 @@ export function executeMoveX(state: GameStateX, from: SquareX, to: SquareX, isSu
   ns.lastMove = { from, to };
   ns.selectedSquare = null; ns.validMoves = []; ns.superMoves = []; ns.castleMoves = [];
   ns.superMoveMode = false;
-  ns.justEliminated = null;
 
+  const remainingPlayers = getRemainingPlayersX(ns.board, ns.turnOrder);
+  ns.eliminatedPlayers = TURN_ORDER.filter(c => !remainingPlayers.includes(c));
+  ns.justEliminated = ns.eliminatedPlayers.find(c => !state.eliminatedPlayers.includes(c)) ?? null;
+
+  if (remainingPlayers.length === 1) {
+    ns.status = "finished";
+    ns.winner = remainingPlayers[0];
+    ns.currentTurn = remainingPlayers[0];
+    ns.pendingRetrieve = null;
+    return ns;
+  }
+  ns.turnOrder = remainingPlayers;
   ns.status = "playing";
-  const eliminated = applyEliminationCheckX(ns);
-  if (eliminated.status === "finished") { eliminated.pendingRetrieve = null; return eliminated; }
+  const eliminated = ns;
 
   // Paladin reaching ANY other player's home edge (like reaching the enemy
   // back rank in 2-player 8x8) may retrieve one of its own previously lost
@@ -436,16 +443,33 @@ export function quitPlayerX(state: GameStateX, color: PlayerColorX): GameStateX 
   const oldOrder = ns.turnOrder;
   const quitterIdx = oldOrder.indexOf(color);
 
-  const eliminated = applyEliminationCheckX(ns);
-  if (eliminated.status !== "finished" && wasCurrent && quitterIdx !== -1) {
+  // Only the quitter is removed here — countPiecesX(color) is now 0 for
+  // them alone, so getRemainingPlayersX drops exactly that one color and
+  // everyone else with pieces still on the board stays active.
+  const remainingPlayers = getRemainingPlayersX(ns.board, ns.turnOrder);
+  ns.eliminatedPlayers = TURN_ORDER.filter(c => !remainingPlayers.includes(c));
+  ns.justEliminated = ns.eliminatedPlayers.find(c => !state.eliminatedPlayers.includes(c)) ?? null;
+  ns.turnOrder = remainingPlayers;
+
+  // Victory is only declared once a single player remains — one quit (or
+  // even several sequential quits) among 4 never finishes the match early.
+  if (remainingPlayers.length === 1) {
+    ns.status = "finished";
+    ns.winner = remainingPlayers[0];
+    ns.currentTurn = remainingPlayers[0];
+    return ns;
+  }
+
+  ns.status = "playing";
+  if (wasCurrent && quitterIdx !== -1) {
     // Walk forward from the quitter's old slot in the ORIGINAL rotation
     // order until hitting a color that's still active — advanceTurnColor
     // can't be used here since it relies on currentTurn already being a
     // member of the (now quitter-less) turnOrder.
     for (let step = 1; step <= oldOrder.length; step++) {
       const candidate = oldOrder[(quitterIdx + step) % oldOrder.length];
-      if (eliminated.turnOrder.includes(candidate)) { eliminated.currentTurn = candidate; break; }
+      if (ns.turnOrder.includes(candidate)) { ns.currentTurn = candidate; break; }
     }
   }
-  return eliminated;
+  return ns;
 }

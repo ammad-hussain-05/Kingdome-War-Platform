@@ -6,8 +6,9 @@ import {
   createInitialGameStateX, getLegalMovesX, getLegalSuperMovesX, getCastleMovesX,
   executeMoveX, executeCastleX, passTurnX, retrieveCapturedPieceX, skipRetrieveX,
   quitPlayerX, squareEqualsX, myLostPiecesPool, pieceImagePathX,
-  SIZE, inPlayAreaX,
+  SIZE, inPlayAreaX, CENTER_LO, CENTER_HI,
 } from "@/lib/game/rules-x8x8";
+import Fireworks from "@/components/game/fireworks";
 
 // ─── SOUND — same tiny WebAudio beeps used across every other board ─────────
 function snd(type: string) {
@@ -36,6 +37,7 @@ function snd(type: string) {
 }
 
 const AC: Record<PlayerColorX, string> = { white: "#e8dfc0", black: "#c8a96e", golden: "#d4a843", grey: "#b8c0cc" };
+const GL: Record<PlayerColorX, string> = { white: "rgba(232,223,192,0.4)", black: "rgba(200,169,110,0.4)", golden: "rgba(212,168,67,0.4)", grey: "rgba(184,192,204,0.4)" };
 const SIDE_LABEL: Record<PlayerColorX, string> = { white: "Top", grey: "Right", black: "Bottom", golden: "Left" };
 
 // ─── BATTLE GUIDE — identical piece set/abilities to 8x8 Classic War ───────
@@ -218,15 +220,90 @@ function ControlCard({ icon, title, subtitle, accent, onClick, disabled, isMobil
 }
 
 // ─── CROSS-SHAPE CLIP PATH ────────────────────────────────────────────────────
-// Traces the 12-vertex plus/cross outline in percentages of the 24x24 grid —
-// arms of 8 units meeting a shared 8x8 center, exactly matching the
+// Traces the 12-vertex plus/cross outline in percentages of the grid — 4
+// arms (8 wide x 4 deep) meeting a shared 8x8 center, exactly matching the
 // reference image's silhouette. One single connected battlefield — never
 // four separate boards.
-const P1 = (8 / SIZE) * 100, P2 = (16 / SIZE) * 100;
+const P1 = (CENTER_LO / SIZE) * 100, P2 = ((CENTER_HI + 1) / SIZE) * 100;
 const CROSS_CLIP = `polygon(${P1}% 0%, ${P2}% 0%, ${P2}% ${P1}%, 100% ${P1}%, 100% ${P2}%, ${P2}% ${P2}%, ${P2}% 100%, ${P1}% 100%, ${P1}% ${P2}%, 0% ${P2}%, 0% ${P1}%, ${P1}% ${P1}%)`;
 // The 4 concave inner corners (where each arm meets the shared center) get a
 // small decorative gem accent, matching the reference board's frame detail.
 const GEM_CORNERS: [number, number][] = [[P1, P1], [P2, P1], [P1, P2], [P2, P2]];
+
+// ─── ELIMINATION POPUP — same style/animation as the X-12x12/X-16x16 boards ─
+function EliminationPopupX8({ eliminated, playerNames, onClose }: { eliminated: PlayerColorX; playerNames: Record<PlayerColorX, string>; onClose: () => void }) {
+  useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, []);
+  const ac = AC[eliminated];
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(0,0,0,.7)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "x8FadeIn .3s ease" }} onClick={onClose}>
+      <div style={{ textAlign: "center", padding: "48px 64px", borderRadius: 24, background: "linear-gradient(160deg,#1a0505,#2a0808)", border: `1px solid ${ac}40`, boxShadow: "0 0 60px rgba(255,50,50,.3),0 30px 80px rgba(0,0,0,.8)", animation: "x8SlideUp .4s cubic-bezier(.22,1,.36,1)" }}>
+        <div style={{ fontSize: 72, marginBottom: 16, lineHeight: 1 }}>💀</div>
+        <h2 style={{ fontFamily: "'Cinzel',Georgia,serif", fontSize: 32, color: "#ff8080", margin: "0 0 8px", fontWeight: 700 }}>Eliminated!</h2>
+        <p style={{ fontSize: 18, color: `${ac}cc`, margin: "0 0 6px", fontWeight: 600 }}>{playerNames[eliminated] || eliminated} ({SIDE_LABEL[eliminated]})</p>
+        <p style={{ fontSize: 14, color: "rgba(255,255,255,.4)", margin: "0 0 24px", fontStyle: "italic" }}>has been eliminated from the battlefield</p>
+        <p style={{ fontSize: 13, color: "rgba(255,180,180,.5)" }}>The remaining kingdoms continue their battle...</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── WIN / DEFEAT SCREEN — same premium celebration effect as the X-12x12/
+// X-16x16 boards: fireworks for the winner, glow, and a richer presentation
+// than a plain static card ───────────────────────────────────────────────────
+function EndScreenX8({ showWin, myColor, playerNames, onLobby, onPlayAgain }: {
+  showWin: PlayerColorX; myColor: PlayerColorX; playerNames: Record<PlayerColorX, string>; onLobby: () => void; onPlayAgain: () => void;
+}) {
+  const isWinner = showWin === myColor;
+  const ac = AC[showWin];
+  const gl = GL[showWin];
+  return (
+    <>
+      {isWinner && <Fireworks />}
+      <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.82)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center", animation: "x8FadeIn .4s ease", padding: 20 }}>
+        <div style={{
+          textAlign: "center", padding: "52px 68px", borderRadius: 28, position: "relative", overflow: "hidden",
+          background: isWinner ? "linear-gradient(160deg,#1a1400,#2e2000,#1a1400)" : "linear-gradient(160deg,#0e0505,#1e0808,#0e0505)",
+          border: `1px solid ${ac}45`,
+          boxShadow: `0 0 80px ${gl},0 0 160px ${isWinner ? "rgba(212,168,67,0.15)" : "rgba(255,50,50,0.1)"},0 40px 100px rgba(0,0,0,0.95),inset 0 1px 0 ${ac}18`,
+          animation: "x8WinPulse 2.5s ease-in-out infinite", fontFamily: "'Cinzel',Georgia,serif", maxWidth: "92vw",
+        }}>
+          <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: 200, height: 1, background: `linear-gradient(90deg,transparent,${ac}80,transparent)` }} />
+          <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: 140, height: 32, background: `radial-gradient(ellipse,${ac}18,transparent 70%)` }} />
+
+          <div style={{ fontSize: 84, marginBottom: 8 }}>{isWinner ? "👑" : "💀"}</div>
+
+          <p style={{ fontSize: 9, letterSpacing: "0.32em", textTransform: "uppercase", color: `${ac}60`, margin: "0 0 10px" }}>
+            {isWinner ? "— Kingdom Triumphant —" : "— Kingdom Fallen —"}
+          </p>
+
+          <h1 style={{ fontSize: 54, color: isWinner ? "#c8a84a" : ac, margin: "0 0 8px", fontWeight: 700, letterSpacing: ".04em",
+            textShadow: isWinner ? "0 0 40px rgba(200,168,74,0.6),0 0 80px rgba(200,168,74,0.2)" : "0 0 40px rgba(255,80,80,0.5)" }}>
+            {isWinner ? "Victory!" : "Defeated"}
+          </h1>
+
+          <p style={{ fontSize: 20, color: `${ac}aa`, margin: "0 0 6px", fontWeight: 600 }}>{playerNames[showWin] || showWin}</p>
+          <p style={{ fontSize: 14, color: "rgba(212,168,67,.5)", margin: "0 0 12px", fontStyle: "italic" }}>({SIDE_LABEL[showWin]} kingdom)</p>
+
+          <div style={{ height: 1, background: `linear-gradient(90deg,transparent,${ac}40,transparent)`, margin: "16px auto", width: 200 }} />
+
+          <div style={{ padding: "14px 28px", borderRadius: 12, background: isWinner ? "rgba(200,168,74,0.08)" : "rgba(255,80,80,0.06)", border: `1px solid ${isWinner ? "rgba(200,168,74,0.2)" : "rgba(255,80,80,0.18)"}`, marginBottom: 36, display: "inline-block" }}>
+            <p style={{ margin: 0, fontSize: 15, color: isWinner ? "rgba(212,168,67,.85)" : "rgba(255,140,140,.7)", fontStyle: "italic" }}>
+              {isWinner ? "🏆 The Golden Crown has been claimed" : "💀 Your Kingdom has fallen"}
+            </p>
+            <p style={{ margin: "6px 0 0", fontSize: 12, color: "rgba(180,160,120,.4)" }}>
+              {isWinner ? "Last Kingdom Standing" : "All pieces eliminated"}
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+            <button onClick={onLobby} style={{ padding: "14px 40px", borderRadius: 14, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", fontSize: 12, background: `linear-gradient(135deg,${ac},${ac}88)`, color: "#0a0d14", border: "none", cursor: "pointer", fontFamily: "'Cinzel',Georgia,serif", boxShadow: `0 8px 30px ${gl}` }}>← Return to Lobby</button>
+            <button onClick={onPlayAgain} style={{ padding: "14px 40px", borderRadius: 14, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", fontSize: 12, background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.6)", border: "1px solid rgba(255,255,255,.12)", cursor: "pointer", fontFamily: "'Cinzel',Georgia,serif" }}>Play Again</button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
 
 interface Props {
   myColor: PlayerColorX; roomId: string;
@@ -267,20 +344,26 @@ export default function BoardX8x8({ myColor, roomId, playerNames, onGameEnd, soc
       setIsMobile(mobile);
 
       if (mobile) {
-        const outerPadX = 14;
+        // Matches the container's own uniform padding (24px) so the frame
+        // clearance is actually reserved out of the board's size budget
+        // instead of being silently eaten into.
+        const outerPadX = 24, outerPadY = 24;
         const headerH = 66;
         const cardsH = 40;
         const turnH = 34;
         const controlsH = 96;
         const gaps = 14 * 4; // outer container gap between header/cards/turn/board/controls
         const safety = 40;
-        const chromeH = headerH + cardsH + turnH + controlsH + gaps + safety;
+        const chromeH = headerH + cardsH + turnH + controlsH + gaps + outerPadY * 2 + safety;
         const maxByWidth = vw - outerPadX * 2;
         const maxByHeight = vh - chromeH;
         const raw = Math.floor(Math.min(maxByWidth, maxByHeight) / SIZE);
         setSqPx(Math.max(8, Math.min(raw, 34)));
       } else {
-        const outerPadX = 28, outerPadY = 22;
+        // Matches the container's own uniform padding (56px) so the frame
+        // clearance is actually reserved out of the board's size budget
+        // instead of being silently eaten into.
+        const outerPadX = 56, outerPadY = 56;
         const headerH = 108;
         const outerGap = 26; // header -> row
         const turnH = 42;
@@ -566,6 +649,9 @@ export default function BoardX8x8({ myColor, roomId, playerNames, onGameEnd, soc
         @keyframes x8TipIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
         @keyframes x8Pulse2{0%,100%{box-shadow:0 0 0 0 rgba(125,189,110,.5)}50%{box-shadow:0 0 0 5px rgba(125,189,110,0)}}
         @keyframes x8TrimShine{0%{background-position:-200% center}100%{background-position:200% center}}
+        @keyframes x8FadeIn{from{opacity:0}to{opacity:1}}
+        @keyframes x8SlideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes x8WinPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.02)}}
         .x8sq{position:relative;overflow:hidden;cursor:pointer;transition:filter .1s;}
         .x8sq:hover{filter:brightness(1.2);}
         .x8-btn{backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease,background .18s ease;box-shadow:0 6px 18px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.06);}
@@ -583,9 +669,15 @@ export default function BoardX8x8({ myColor, roomId, playerNames, onGameEnd, soc
 
       <div style={{
         minHeight: "100vh", width: "100%", maxWidth: "100vw", overflowX: "hidden", boxSizing: "border-box",
-        background: "radial-gradient(ellipse at 50% -10%,#100c06 0%,#07060a 55%,#020103 100%)",
+        backgroundImage: "url('/X-8x8/background.png')",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
         display: "flex", flexDirection: "column", alignItems: "center",
-        padding: isMobile ? "12px 14px 18px" : "20px 28px", gap: isMobile ? 14 : 26, fontFamily: "'Cinzel',Georgia,serif",
+        // Equal clearance on all four sides so the title/board/panels never
+        // touch the background image's decorative frame — kept uniform
+        // (not just top-heavy) per side at each breakpoint.
+        padding: isMobile ? "24px" : "56px", gap: isMobile ? 14 : 26, fontFamily: "'Cinzel',Georgia,serif",
       }}>
         {/* Header — crown + flanking ornament, large premium shimmer title */}
         <div style={{ textAlign: "center", width: "100%" }}>
@@ -806,28 +898,18 @@ export default function BoardX8x8({ myColor, roomId, playerNames, onGameEnd, soc
 
         {/* ── ELIMINATION POPUP ── */}
         {elimPopup && (
-          <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,.7)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setElimPopup(null)}>
-            <div style={{ textAlign: "center", padding: "40px 56px", borderRadius: 22, background: "linear-gradient(160deg,#1a0505,#2a0808)", border: `1px solid ${AC[elimPopup]}40` }}>
-              <div style={{ fontSize: 56, marginBottom: 12 }}>💀</div>
-              <h2 style={{ fontSize: 26, color: "#ff8080", margin: "0 0 6px" }}>Eliminated!</h2>
-              <p style={{ fontSize: 15, color: `${AC[elimPopup]}cc`, margin: 0 }}>{playerNames[elimPopup] || elimPopup} has fallen</p>
-            </div>
-          </div>
+          <EliminationPopupX8 eliminated={elimPopup} playerNames={playerNames} onClose={() => setElimPopup(null)} />
         )}
 
-        {/* ── WIN SCREEN ── */}
+        {/* ── WIN / DEFEAT SCREEN ── */}
         {showWin && (
-          <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,.92)", backdropFilter: "blur(20px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ textAlign: "center", padding: "44px 48px", borderRadius: 28, width: "min(440px,92vw)",
-              background: showWin === myColor ? "linear-gradient(160deg,#0e0a02,#1c1204,#0c0802)" : "linear-gradient(160deg,#080404,#140606,#080303)",
-              border: `1px solid ${showWin === myColor ? "rgba(212,168,67,.22)" : "rgba(255,60,60,.18)"}`, fontFamily: "'Cinzel',Georgia,serif" }}>
-              <h1 style={{ fontSize: 34, margin: "0 0 8px", color: showWin === myColor ? "#d4a843" : "#ff7070" }}>{showWin === myColor ? "Victory!" : "Defeated"}</h1>
-              <p style={{ fontSize: 14, color: "rgba(232,223,192,.7)", margin: "0 0 24px" }}>{playerNames[showWin] || showWin} claims the battlefield</p>
-              <button onClick={() => window.location.href = "/lobby"} style={{ padding: "13px 28px", borderRadius: 14, background: "linear-gradient(135deg,#d4a843,#b87e28)", color: "#1a0d00", border: "none", cursor: "pointer", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", fontSize: 12, fontFamily: "'Cinzel',Georgia,serif" }}>
-                ← Lobby
-              </button>
-            </div>
-          </div>
+          <EndScreenX8
+            showWin={showWin}
+            myColor={myColor}
+            playerNames={playerNames}
+            onLobby={() => window.location.href = "/lobby"}
+            onPlayAgain={() => { setGs(createInitialGameStateX()); setShowWin(null); }}
+          />
         )}
       </div>
     </>

@@ -17,6 +17,10 @@ import TriBoard12x12 from "@/components/game/tri/tri-board12x12";
 import TriBoard16x16 from "@/components/game/tri/tri-board16x16";
 import BoardX8x8 from "@/components/game/board-x8x8";
 import type { PlayerColorX } from "@/lib/game/rules-x8x8";
+import BoardX12x12 from "@/components/game/board-x12x12";
+import type { PlayerColorX12 } from "@/lib/game/rules-x12x12";
+import BoardX16x16 from "@/components/game/board-x16x16";
+import type { PlayerColorX16 } from "@/lib/game/rules-x16x16";
 import { Footer } from "@/components/footer";
 import { DisclaimerFeedback } from "@/components/disclaimer-feedback";
 type TriPlayerColor8 = "white" | "black" | "grey";
@@ -227,6 +231,28 @@ export default function BoardPage() {
         myColor={myColor as PlayerColorX}
         roomId={roomId}
         playerNames={playerNames as Record<PlayerColorX, string>}
+        socket={socketRef.current!}
+        onGameEnd={(winner) => console.log(`${winner} wins!`)}
+      />
+    );
+  } else if (mode === "x-12x12") {
+    // ─── 12x12 X Board (4-player cross board) ──────────────────────────────
+    content = (
+      <BoardX12x12
+        myColor={myColor as PlayerColorX12}
+        roomId={roomId}
+        playerNames={playerNames as Record<PlayerColorX12, string>}
+        socket={socketRef.current!}
+        onGameEnd={(winner) => console.log(`${winner} wins!`)}
+      />
+    );
+  } else if (mode === "x-16x16") {
+    // ─── 16x16 X Board (4-player cross board) ──────────────────────────────
+    content = (
+      <BoardX16x16
+        myColor={myColor as PlayerColorX16}
+        roomId={roomId}
+        playerNames={playerNames as Record<PlayerColorX16, string>}
         socket={socketRef.current!}
         onGameEnd={(winner) => console.log(`${winner} wins!`)}
       />
