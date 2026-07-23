@@ -204,8 +204,8 @@ export function HeroSection() {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
 
           {/* Primary — Play Now */}
-          <a
-            href="#play"
+          <Link
+            href="/lobby"
             style={{
                           fontFamily: "var(--font-cinzel-decorative), 'Cinzel Decorative', serif",
 
@@ -234,7 +234,7 @@ export function HeroSection() {
             }}
           >
             ⚔ Play Now
-          </a>
+          </Link>
 
           {/* Secondary — Order */}
           <a
@@ -267,9 +267,43 @@ export function HeroSection() {
             Order Your Board
           </a>
         </div>
-        
-           
-       
+      </div>
+
+      {/* ── HERO MARQUEE SLIDER — full-width banner ── */}
+      <div
+        className="relative z-20 w-full overflow-hidden"
+        style={{
+          borderTop: "1px solid rgba(201,168,76,0.35)",
+          borderBottom: "1px solid rgba(201,168,76,0.35)",
+          background: "linear-gradient(90deg, rgba(10,8,4,0.78), rgba(28,20,6,0.9), rgba(10,8,4,0.78))",
+          boxShadow: "0 0 34px rgba(201,168,76,0.18), inset 0 1px 0 rgba(255,255,255,0.06)",
+          backdropFilter: "blur(10px)",
+          WebkitBackdropFilter: "blur(10px)",
+        }}
+      >
+        <div
+          className="hero-marquee-track flex w-max"
+          style={{ animation: "heroMarqueeScroll 30s linear infinite" }}
+        >
+          {[0, 1].map((i) => (
+            <span
+              key={i}
+              className="flex items-center whitespace-nowrap"
+              style={{
+                fontFamily: "var(--font-crimson-text), 'Crimson Text', serif",
+                fontSize: "17px",
+                letterSpacing: "0.02em",
+                color: "rgba(238,229,205,0.92)",
+                textShadow: "0 1px 8px rgba(0,0,0,0.9)",
+                padding: "22px 36px",
+              }}
+              aria-hidden={i === 1}
+            >
+              Kingdom Come is currently in active development. Our team is continuously working on adding new features, improving gameplay performance, refining mechanics, and creating the ultimate battlefield experience.
+              <span style={{ color: "#c9a84c", margin: "0 36px" }}>✦</span>
+            </span>
+          ))}
+        </div>
       </div>
 
 
@@ -293,6 +327,13 @@ export function HeroSection() {
         @keyframes marquee {
           0% { transform: translateX(0); }
           100% { transform: translateX(-33.33%); }
+        }
+        @keyframes heroMarqueeScroll {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .hero-marquee-track { animation: none !important; }
         }
       `}</style>
     </section>

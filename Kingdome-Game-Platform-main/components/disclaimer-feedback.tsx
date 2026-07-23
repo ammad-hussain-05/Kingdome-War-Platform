@@ -52,18 +52,29 @@ export function DisclaimerFeedback() {
             <span className="df-crown-line df-crown-line-r" />
           </div>
 
-          <h2 className="df-title">Disclaimer</h2>
+          <h2 className="df-title">Welcome to Kingdom Come</h2>
 
           <div className="df-disclaimer-box">
             <div className="df-scroll-icon" aria-hidden="true">
               <ScrollText className="h-7 w-7" />
             </div>
-            <p className="df-disclaimer-text">
-              All suggestions, ideas, or recommendations are now the property of{" "}
-              <strong>&ldquo;Kingdom Come&rdquo;</strong> — your suggestions will be appreciated,
-              considered and may be well implemented into the induction to future KingdomCome
-              games, and may be honorary.
-            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <p className="df-disclaimer-text">
+                Thank you for being part of the journey. Kingdom Come is currently in active development, and our team is dedicated to continuously improving the game by adding new features, refining gameplay mechanics, optimizing performance, and creating a more immersive battlefield experience.
+              </p>
+              <p className="df-disclaimer-text">
+                As development continues, some features may still be adjusted, balanced, or improved over time. Players may occasionally encounter minor issues or changes as we test and refine different aspects of the game.
+              </p>
+              <p className="df-disclaimer-text">
+                Your feedback is extremely valuable to us. Whether you discover a bug, have a suggestion, or want to share your experience, your input helps us improve the game and create a better experience for the entire community.
+              </p>
+              <p className="df-disclaimer-text">
+                We appreciate your support, patience, and involvement as Kingdom Come continues to evolve.
+              </p>
+              <p className="df-disclaimer-text">
+                Thank you for helping us build the future of the battlefield.
+              </p>
+            </div>
           </div>
 
           <div className="df-mini-divider" aria-hidden="true">
