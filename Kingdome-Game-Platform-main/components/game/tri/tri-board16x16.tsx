@@ -7,6 +7,9 @@ import {
   executeMoveTri16,
   eliminatePlayerTri16,
   getLegalMovesTri16,
+  getLegalPaladinSuperMovesTri16,
+  getLegalCastleMovesTri16,
+  executeCastleTri16,
   getRawMovesTri16,
   passTurnTri16,
   advanceTurnTri16,
@@ -63,6 +66,7 @@ const GOLD = "#d4a843";
 const DANGER = "#ff5050";
 const SAFE = "#3ecf6e";
 const SELECT = "#4aa8ff";
+const SUPER = "rgba(255,140,0,.95)";
 
 const BOARD_COLOR: Record<TriBoardId, TriColor | null> = { A: "white", B: "black", C: "grey", T: null };
 
@@ -71,10 +75,14 @@ const RULES = [
   { title: "Reach a connector", body: "Each kingdom has 3 connector cells (glowing gold) on the edge facing the Tri Gate." },
   { title: "Enter the Tri Gate", body: "From a connector, cross into the large shared battlefield at the center." },
   { title: "Fight in the battlefield", body: "The Tri Gate is one real board — White, Black and Grey all move and clash on it together. Crossing is one-way; there is no return." },
-  { title: "Cast special abilities", body: "Sorceress, Wizard, Conjurer, Warlock, Thief and Trickster abilities work like the classic board, but only ever target the same board the caster is standing on." },
+  { title: "Cast special abilities", body: "Sorceress, Wizard, Conjurer, Warlock, Thief and Trickster abilities work like the classic board. Revive and Steal only ever target the same board the caster is standing on — but Sleep, Bind, Teleport and Wish reach anywhere on the battlefield, including an opponent's kingdom." },
   { title: "King capture is just a capture", body: "Capturing an enemy Mystic King does NOT eliminate that player — it's a normal capture. They keep fighting with whatever remains." },
   { title: "Win the war", body: "A player is eliminated only once every one of their pieces is gone from every board. The last kingdom with any pieces left wins." },
 ];
+
+// ─── VICTORY RULES (subset of RULES shown inside the Game Flow / Victory
+// modal, right alongside the visual flow steps) ─────────────────────────────
+const VICTORY_RULES = RULES.slice(5);
 
 function LegendSwatch({ children }: { children: React.ReactNode }) {
   return (
@@ -110,12 +118,12 @@ const EMOJI: Record<PieceType16, string> = {
 const PIECE_INFO: Record<PieceType16, { name: string; special: string }> = {
   "mystic-king": { name: "Mystic King", special: "Losing this is just a normal capture — you keep fighting until every piece you have is gone." },
   "super-queen": { name: "Super Queen", special: "Moves twice per turn while your Sorceress lives. Mage sacrifice restores this." },
-  "dragon": { name: "Dragon", special: "Slides any direction, plus L-shaped capture over own pieces." },
-  "gargoyle": { name: "Gargoyle", special: "Same as Dragon." },
+  "dragon": { name: "Dragon", special: "Slides any direction, plus a 1-square claw/tail attack and an L-shaped fly-over strike that ignores pieces in between." },
+  "gargoyle": { name: "Gargoyle", special: "Wing/Tail Attack 1 square in any direction, or Fire Attack 2 squares in any direction — every turn, no slide." },
   "wizard": { name: "Wizard", special: "Ethereal — can only capture other ethereal pieces. Teleports any piece on its board." },
-  "sorceress": { name: "Sorceress", special: "3 charges: Sleep, Teleport, or Wish (dice) — same board only." },
+  "sorceress": { name: "Sorceress", special: "3 charges: Sleep, Teleport, or Wish (dice) — all reach anywhere on the battlefield." },
   "conjurer": { name: "Conjurer", special: "Revives one captured piece onto an empty square on its own board. One charge." },
-  "warlock": { name: "Warlock", special: "Binds every enemy piece on its own board for 1 round. One-time use." },
+  "warlock": { name: "Warlock", special: "Binds every enemy piece across the entire battlefield for 1 round. One-time use." },
   "trickster": { name: "Trickster", special: "Steals any adjacent enemy piece by touch, once. Survive 10+ of your own turns and you're eliminated!" },
   "thief": { name: "Thief", special: "Triple-jump steal: removes a non-king enemy within 3 squares, once." },
   "super-knight": { name: "Super Knight", special: "Knight-shaped jumps only." },
@@ -124,10 +132,69 @@ const PIECE_INFO: Record<PieceType16, { name: string; special: string }> = {
   "assassin": { name: "Assassin", special: "Slide + jump + one-step combined." },
   "cavalier": { name: "Cavalier", special: "Knight-jump + one-step." },
   "mage": { name: "Mage", special: "Can sacrifice itself next to your Super Queen to restore her double-move." },
-  "paladin": { name: "Paladin", special: "One-time long-range super attack (2-3 squares) if unused." },
+  "paladin": { name: "Paladin", special: "Normal movement: 1 square any direction. Super Move: one-time 3-square surprise attack in any direction, then 1-square only. Reverse Castle: swap places with an adjacent ally." },
   "archer": { name: "Archer", special: "Slides any direction." },
-  "aerobat-assassin": { name: "Aerobat Assassin", special: "Like Assassin, but jumps over ANY piece (even enemies) for its L-move." },
+  "aerobat-assassin": { name: "Acrobat Assassin", special: "Slides any direction like an Assassin. Moves and kills in an L-shape, jumping over any character (even enemies). Can also strike 1 square in any direction, like a Paladin." },
 };
+
+// ─── SPELLS / SPECIAL ABILITIES — the 16x16 roster carries more spellcasters
+// than the other Tri boards (Conjurer, Warlock, Thief, Trickster on top of
+// Sorceress/Wizard/Mage/Super Queen/Executioner), so it gets its own
+// dedicated reference card grid in the right panel alongside Piece Abilities.
+// "range" drives the colored pill on each card: Global spells can target any
+// board on the battlefield (including an opponent's kingdom); Same Board
+// spells stay scoped to the caster's own board; Passive abilities aren't cast
+// at all — they trigger automatically off another action.
+type SpellRange = "Global" | "Same Board" | "Passive";
+const SPELLS: { icon: string; name: string; piece: string; range: SpellRange; body: string }[] = [
+  { icon: "😴", name: "Sleep", piece: "Sorceress", range: "Global", body: "Puts any enemy piece anywhere on the battlefield to sleep for 3 rounds, preventing it from moving or acting." },
+  { icon: "🌀", name: "Teleport", piece: "Sorceress", range: "Global", body: "Moves one of your own pieces to any empty square anywhere on the battlefield — including an opponent's kingdom." },
+  { icon: "⭐", name: "Wish", piece: "Sorceress", range: "Same Board", body: "Rolls a 10-sided die. Rolling above 5 grants a free Global Teleport with the same reach as the Wizard's; rolling 5 or below ends the turn with no effect." },
+  { icon: "🧙", name: "Teleport", piece: "Wizard", range: "Global", body: "Teleports any piece standing on the Wizard's own board to any empty square anywhere on the battlefield — including an opponent's kingdom." },
+  { icon: "✨", name: "Revive", piece: "Conjurer", range: "Same Board", body: "Brings back one of your own captured pieces (never the Mystic King) onto an empty square on the Conjurer's own board. One charge." },
+  { icon: "⛓️", name: "Bind", piece: "Warlock", range: "Global", body: "Freezes every enemy piece across the entire battlefield — all three kingdoms and the Tri Gate — for 1 full round. One-time use." },
+  { icon: "🗝️", name: "Triple-Jump Steal", piece: "Thief", range: "Same Board", body: "Removes any non-king enemy piece within 3 squares on the same board, ignoring pieces in between. One-time use." },
+  { icon: "🃏", name: "Touch Steal", piece: "Trickster", range: "Same Board", body: "Steals any adjacent enemy piece by touch. One-time use — and if your Trickster becomes your only piece and survives 10 of your own turns, it is eliminated." },
+  { icon: "💫", name: "Sacrifice", piece: "Mage", range: "Same Board", body: "Sacrifice the Mage next to your own Super Queen to restore her double-move ability after her Sorceress has fallen." },
+  { icon: "👑", name: "Double Move", piece: "Super Queen", range: "Passive", body: "Moves twice in a single turn for as long as your Sorceress is alive, or until restored by a Mage sacrifice." },
+  { icon: "🪓", name: "Axe Swing", piece: "Executioner", range: "Passive", body: "Immediately after completing its normal slide, the Executioner may swing its axe at one adjacent enemy piece." },
+];
+
+// ─── Real character piece art (same source as the X 16x16 Battle Guide) ────
+const PIECE_ICON_SRC: Record<PieceType16, string> = {
+  "mystic-king": "/all-characters/Mystic King.png",
+  "super-queen": "/all-characters/Super Queen.png",
+  "dragon": "/all-characters/Dragon.png",
+  "gargoyle": "/all-characters/Gargoyle.png",
+  "wizard": "/all-characters/Wizard.png",
+  "sorceress": "/all-characters/Sorceress.png",
+  "conjurer": "/all-characters/Conjurer.png",
+  "warlock": "/all-characters/Warlock.png",
+  "trickster": "/all-characters/Trickster.png",
+  "thief": "/all-characters/Thief.png",
+  "super-knight": "/all-characters/Super Knight.png",
+  "assassin": "/all-characters/Assassin.png",
+  "executioner": "/all-characters/Executioner.png",
+  "cavalier": "/all-characters/Cavalier Prince.png",
+  "mage": "/all-characters/Mage-Princess.png",
+  "elvin-archer": "/all-characters/Elven Archer.png",
+  "paladin": "/all-characters/Paladin.png",
+  "archer": "/all-characters/Archer.png",
+  "aerobat-assassin": "/all-characters/Acrobat Assassin.png",
+};
+
+function PieceAbilityIcon({ pieceKey }: { pieceKey: PieceType16 }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <>{EMOJI[pieceKey]}</>;
+  return (
+    <img
+      src={PIECE_ICON_SRC[pieceKey]}
+      alt={pieceKey}
+      onError={() => setFailed(true)}
+      style={{ width: "84%", height: "84%", objectFit: "contain", pointerEvents: "none" }}
+    />
+  );
+}
 
 function CapturedTray({ pieces }: { pieces: Piece16[] }) {
   if (pieces.length === 0) return null;
@@ -146,6 +213,47 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
     <div className="tb-panel">
       <h3 className="tb-panel-title">{title}</h3>
       {children}
+    </div>
+  );
+}
+
+// ─── CONTROL CARD — modern expandable action button used in the right panel,
+// same premium icon-badge + title/subtitle pattern as the X 8x8 board's
+// "Game Controls" list ──────────────────────────────────────────────────────
+function ControlCard({ icon, title, subtitle, accent, onClick, disabled }: {
+  icon: string; title: string; subtitle: string; accent: string; onClick: () => void; disabled?: boolean;
+}) {
+  return (
+    <button className="tb-ctrl-btn" onClick={onClick} disabled={disabled}
+      style={{
+        background: `linear-gradient(160deg,${accent}1c,${accent}0a)`, border: `1px solid ${accent}4a`, opacity: disabled ? 0.5 : 1,
+      }}>
+      <span className="tb-ctrl-icon" style={{ background: `${accent}26`, border: `1px solid ${accent}60`, boxShadow: `inset 0 1px 0 rgba(255,255,255,.15), 0 0 10px ${accent}30` }}>{icon}</span>
+      <span style={{ minWidth: 0, textAlign: "left" }}>
+        <p style={{ margin: 0, fontSize: 11.5, fontWeight: 800, color: accent, letterSpacing: ".05em", textTransform: "uppercase" }}>{title}</p>
+        <p style={{ margin: "2px 0 0", fontSize: 10, color: "rgba(220,220,230,.55)", lineHeight: 1.35 }}>{subtitle}</p>
+      </span>
+    </button>
+  );
+}
+
+// ─── MODAL SHELL — glass effect + gold fantasy border, matching the X 8x8
+// Battle Guide / Game Rules modals ──────────────────────────────────────────
+function TbModal({ title, subtitle, icon, onClose, children }: {
+  title: string; subtitle?: string; icon: string; onClose: () => void; children: React.ReactNode;
+}) {
+  return (
+    <div className="tb-modal-backdrop" onClick={onClose}>
+      <div className="tb-modal-card" onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 24, color: GOLD, fontFamily: "'Cinzel',Georgia,serif" }}>{icon} {title}</h2>
+            {subtitle && <p style={{ margin: "5px 0 0", fontSize: 10, color: "rgba(255,255,255,.5)", letterSpacing: ".1em", textTransform: "uppercase" }}>{subtitle}</p>}
+          </div>
+          <button onClick={onClose} className="tb-modal-close">✕</button>
+        </div>
+        {children}
+      </div>
     </div>
   );
 }
@@ -261,6 +369,10 @@ export default function TriBoard16x16({
   const [triSqPx, setTriSqPx] = useState(18);
   const [kingdomSqPxState, setKingdomSqPxState] = useState(15);
   const [tier, setTier] = useState<LayoutTier>("desktop");
+  const [showTriRules, setShowTriRules] = useState(false);
+  const [showPieceAbilities, setShowPieceAbilities] = useState(false);
+  const [showGameFlow, setShowGameFlow] = useState(false);
+  const [showSpells, setShowSpells] = useState(false);
   const gsRef = useRef(gs);
 
   useEffect(() => {
@@ -333,10 +445,31 @@ export default function TriBoard16x16({
 
   const handleBoardClick = (sq: TriSquare) => {
     if (gs.status !== "playing") return;
+    // A dice roll is awaiting Confirm/End Turn — ignore board clicks until
+    // it's resolved. Matches lib/game/rules-16x16.ts's handleClick guard.
+    if (gs.wishDiceResult !== null) return;
     if (gs.specialMode && gs.currentTurn !== myColor) return;
 
     const board = gs.boards[sq.boardId];
     const piece = board[sq.row][sq.col];
+
+    // ── Paladin Super Move — wholly separate from normal validMoves ─────
+    if (gs.superMoveMode && gs.selectedSquare && gs.superMoves.some((m) => triSquareEquals(m, sq))) {
+      const next = executeMoveTri16(gs, gs.selectedSquare, sq);
+      setAnimSq(sq);
+      setTimeout(() => setAnimSq(null), 450);
+      broadcast(next, gs.selectedSquare, sq);
+      return;
+    }
+
+    // ── Paladin Reverse Castle — swap with an adjacent ally ─────────────
+    if (gs.selectedSquare && gs.castleMoves.some((m) => triSquareEquals(m, sq))) {
+      const next = executeCastleTri16(gs, gs.selectedSquare, sq);
+      setAnimSq(sq);
+      setTimeout(() => setAnimSq(null), 420);
+      broadcast(next, gs.selectedSquare, sq);
+      return;
+    }
 
     // ── Spell-mode dispatch ────────────────────────────────────────────
     if (gs.specialMode === "executioner-axe-swing" && gs.pendingAxeSquare) {
@@ -361,7 +494,9 @@ export default function TriBoard16x16({
 
     if (gs.specialMode === "sorceress-sleep-select" && gs.specialData?.casterSq) {
       const casterSq: TriSquare = gs.specialData.casterSq;
-      if (sq.boardId === casterSq.boardId && piece && piece.color !== myColor) {
+      // Sleep is a battlefield-wide ability — any enemy piece on any board,
+      // not just the caster's own board.
+      if (piece && piece.color !== myColor) {
         const newBoards = applySleepSpellTri16(gs.boards, sq, casterSq);
         broadcast(advanceTurnTri16({ ...gs, boards: newBoards }));
       }
@@ -373,11 +508,14 @@ export default function TriBoard16x16({
       const pieceSq: TriSquare | null = gs.specialData.pieceSq ?? null;
       if (!pieceSq) {
         if (sq.boardId === casterSq.boardId && piece && piece.color === myColor) {
-          broadcast({ ...gs, specialData: { casterSq, pieceSq: sq }, spellMessage: "Sorceress: now click the destination square." });
+          broadcast({ ...gs, specialData: { casterSq, pieceSq: sq }, spellMessage: "Sorceress: now click the destination square — anywhere on the battlefield." });
         }
         return;
       }
-      if (sq.boardId === pieceSq.boardId && !piece) {
+      // Teleport destination is a global ability — any empty square on any
+      // board (including opponent kingdoms and the Tri Gate), not just the
+      // piece's own board.
+      if (!piece) {
         const newBoards = applyTeleportSpellTri16(gs.boards, pieceSq, sq, casterSq);
         broadcast(advanceTurnTri16({ ...gs, boards: newBoards }));
       }
@@ -386,14 +524,16 @@ export default function TriBoard16x16({
 
     if (gs.specialMode === "wizard-teleport-select-piece" && gs.specialData?.anchorBoardId) {
       if (sq.boardId === gs.specialData.anchorBoardId && piece) {
-        broadcast({ ...gs, specialMode: "wizard-teleport-select-dest", specialData: { pieceSq: sq }, spellMessage: "Now click the destination square." });
+        broadcast({ ...gs, specialMode: "wizard-teleport-select-dest", specialData: { pieceSq: sq }, spellMessage: "Now click the destination square — anywhere on the battlefield." });
       }
       return;
     }
 
     if (gs.specialMode === "wizard-teleport-select-dest" && gs.specialData?.pieceSq) {
       const pieceSq: TriSquare = gs.specialData.pieceSq;
-      if (sq.boardId === pieceSq.boardId && !piece) {
+      // Teleport destination is a global ability — any empty square on any
+      // board (including opponent kingdoms and the Tri Gate).
+      if (!piece) {
         const newBoards = applyWizardTeleportTri16(gs.boards, pieceSq, sq);
         broadcast(advanceTurnTri16({ ...gs, boards: newBoards }));
       }
@@ -441,16 +581,30 @@ export default function TriBoard16x16({
     }
 
     if (!piece || piece.color !== myColor || !isMyTurn) {
-      setGs((prev) => ({ ...prev, selectedSquare: null, validMoves: [] }));
+      setGs((prev) => ({ ...prev, selectedSquare: null, validMoves: [], superMoves: [], superMoveMode: false, castleMoves: [] }));
       return;
     }
     if (piece.sleepRoundsLeft > 0 || piece.boundRoundsLeft > 0) return;
 
+    const isPal = piece.type === "paladin";
     setGs((prev) => ({
       ...prev,
       selectedSquare: sq,
       validMoves: getLegalMovesTri16(gs, sq),
+      castleMoves: isPal ? getLegalCastleMovesTri16(gs, sq) : [],
+      superMoves: [],
+      superMoveMode: false,
     }));
+  };
+
+  // ─── PALADIN SUPER MOVE (one-time 3-square surprise attack) ────────────
+  const handleSuperMove = () => {
+    if (!isMyTurn || !gs.selectedSquare) return;
+    const { boardId, row, col } = gs.selectedSquare;
+    const piece = gs.boards[boardId][row][col];
+    if (!piece || piece.type !== "paladin" || piece.color !== myColor || piece.paladanSuperUsed) return;
+    const superMoves = getLegalPaladinSuperMovesTri16(gs, gs.selectedSquare);
+    broadcast({ ...gs, superMoves, superMoveMode: true, validMoves: [], castleMoves: [] });
   };
 
   const handlePass = () => {
@@ -465,7 +619,7 @@ export default function TriBoard16x16({
     if (action === "sleep") {
       const sorc = findPieceTri16(gs.boards, myColor, "sorceress");
       if (!sorc) return;
-      broadcast({ ...gs, selectedSquare: null, validMoves: [], specialMode: "sorceress-sleep-select", specialData: { casterSq: sorc }, spellMessage: "Sorceress: click an enemy piece on your board to put it to sleep." });
+      broadcast({ ...gs, selectedSquare: null, validMoves: [], specialMode: "sorceress-sleep-select", specialData: { casterSq: sorc }, spellMessage: "Sorceress: click any enemy piece anywhere on the battlefield to put it to sleep." });
     } else if (action === "teleport") {
       const sorc = findPieceTri16(gs.boards, myColor, "sorceress");
       if (!sorc) return;
@@ -527,7 +681,7 @@ export default function TriBoard16x16({
   };
 
   const cancelSpecial = () => {
-    broadcast({ ...gs, specialMode: null, specialData: null, spellMessage: null, wishDiceResult: null, selectedSquare: null, validMoves: [] });
+    broadcast({ ...gs, specialMode: null, specialData: null, spellMessage: null, wishDiceResult: null, selectedSquare: null, validMoves: [], superMoves: [], superMoveMode: false, castleMoves: [] });
   };
 
   // ── Which squares are valid spell targets for the CURRENT specialMode ──
@@ -541,31 +695,47 @@ export default function TriBoard16x16({
         set.add(`${t.boardId}|${t.row}|${t.col}`);
       }
     } else if (gs.specialMode === "sorceress-sleep-select" && gs.specialData?.casterSq) {
-      const casterSq: TriSquare = gs.specialData.casterSq;
-      const b = gs.boards[casterSq.boardId];
-      for (let r = 0; r < b.length; r++) for (let c = 0; c < b[r].length; c++) {
-        if (b[r][c] && b[r][c]!.color !== myColor) set.add(`${casterSq.boardId}|${r}|${c}`);
+      // Sleep is a battlefield-wide ability — any enemy piece on any board.
+      for (const boardId of ALL_BOARD_IDS) {
+        const b = gs.boards[boardId];
+        for (let r = 0; r < b.length; r++) for (let c = 0; c < b[r].length; c++) {
+          if (b[r][c] && b[r][c]!.color !== myColor) set.add(`${boardId}|${r}|${c}`);
+        }
       }
     } else if (gs.specialMode === "sorceress-teleport-select" && gs.specialData?.casterSq) {
       const casterSq: TriSquare = gs.specialData.casterSq;
       const pieceSq: TriSquare | null = gs.specialData.pieceSq ?? null;
-      const boardId = pieceSq ? pieceSq.boardId : casterSq.boardId;
-      const b = gs.boards[boardId];
-      for (let r = 0; r < b.length; r++) for (let c = 0; c < b[r].length; c++) {
-        const p = b[r][c];
-        if (!pieceSq) { if (p && p.color === myColor) set.add(`${boardId}|${r}|${c}`); }
-        else { if (!p) set.add(`${boardId}|${r}|${c}`); }
+      if (!pieceSq) {
+        const b = gs.boards[casterSq.boardId];
+        for (let r = 0; r < b.length; r++) for (let c = 0; c < b[r].length; c++) {
+          const p = b[r][c];
+          if (p && p.color === myColor) set.add(`${casterSq.boardId}|${r}|${c}`);
+        }
+      } else {
+        // Destination is a global teleport target — any empty square on any
+        // board, including opponent kingdoms and the Tri Gate.
+        for (const boardId of ALL_BOARD_IDS) {
+          const b = gs.boards[boardId];
+          for (let r = 0; r < b.length; r++) for (let c = 0; c < b[r].length; c++) {
+            if (!b[r][c]) set.add(`${boardId}|${r}|${c}`);
+          }
+        }
       }
-    } else if (gs.specialMode === "wizard-teleport-select-piece" || gs.specialMode === "wizard-teleport-select-dest") {
-      const boardId: TriBoardId | undefined = gs.specialMode === "wizard-teleport-select-piece"
-        ? gs.specialData?.anchorBoardId
-        : gs.specialData?.pieceSq?.boardId;
+    } else if (gs.specialMode === "wizard-teleport-select-piece") {
+      const boardId: TriBoardId | undefined = gs.specialData?.anchorBoardId;
       if (boardId) {
         const b = gs.boards[boardId];
         for (let r = 0; r < b.length; r++) for (let c = 0; c < b[r].length; c++) {
-          const p = b[r][c];
-          if (gs.specialMode === "wizard-teleport-select-piece") { if (p) set.add(`${boardId}|${r}|${c}`); }
-          else { if (!p) set.add(`${boardId}|${r}|${c}`); }
+          if (b[r][c]) set.add(`${boardId}|${r}|${c}`);
+        }
+      }
+    } else if (gs.specialMode === "wizard-teleport-select-dest") {
+      // Destination is a global teleport target — any empty square on any
+      // board, including opponent kingdoms and the Tri Gate.
+      for (const boardId of ALL_BOARD_IDS) {
+        const b = gs.boards[boardId];
+        for (let r = 0; r < b.length; r++) for (let c = 0; c < b[r].length; c++) {
+          if (!b[r][c]) set.add(`${boardId}|${r}|${c}`);
         }
       }
     } else if (gs.specialMode === "conjurer-revive-select" && gs.specialData?.conjurerSq && gs.specialData?.selectedPiece) {
@@ -677,6 +847,8 @@ export default function TriBoard16x16({
 
     const isSel = !!gs.selectedSquare && triSquareEquals(gs.selectedSquare, sq);
     const isValid = gs.validMoves.some((m) => triSquareEquals(m, sq));
+    const isSuper = gs.superMoveMode && gs.superMoves.some((m) => triSquareEquals(m, sq));
+    const isCastle = gs.castleMoves.some((m) => triSquareEquals(m, sq));
     const isLF = !!gs.lastMove && triSquareEquals(gs.lastMove.from, sq);
     const isLT = !!gs.lastMove && triSquareEquals(gs.lastMove.to, sq);
     const isAnim = !!animSq && triSquareEquals(animSq, sq);
@@ -695,6 +867,7 @@ export default function TriBoard16x16({
     let ov = "";
     if (isSel) ov = `${SELECT}88`;
     else if (isLF || isLT) ov = "rgba(212,168,67,.25)";
+    if (gs.superMoveMode && !isSel && !isSuper) ov = ov || "rgba(0,0,0,.1)";
 
     const moveColor = isCrossing ? GOLD : isRiskyMove ? DANGER : SAFE;
 
@@ -732,6 +905,17 @@ export default function TriBoard16x16({
         )}
         {isRiskyMove && (
           <div style={{ position: "absolute", top: -1, right: -1, width: 0, height: 0, borderStyle: "solid", borderWidth: "0 12px 12px 0", borderColor: `transparent ${DANGER} transparent transparent`, opacity: 0.9, zIndex: 5, pointerEvents: "none" }} />
+        )}
+
+        {isSuper && !piece && (
+          <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: size * 0.35, height: size * 0.35, borderRadius: "50%", background: SUPER, boxShadow: `0 0 20px ${SUPER}`, animation: "tdotPop .15s ease both", pointerEvents: "none", zIndex: 4 }} />
+        )}
+        {isSuper && piece && (
+          <div style={{ position: "absolute", top: 3, left: 3, right: 3, bottom: 3, zIndex: 4, borderRadius: 5, boxSizing: "border-box", border: `3px solid ${SUPER}`, pointerEvents: "none" }} />
+        )}
+
+        {isCastle && piece && (
+          <div style={{ position: "absolute", top: 3, left: 3, right: 3, bottom: 3, zIndex: 4, borderRadius: 5, boxSizing: "border-box", border: `2px dashed ${SELECT}`, pointerEvents: "none" }} />
         )}
 
         {piece && (
@@ -831,9 +1015,30 @@ export default function TriBoard16x16({
   // ── Special abilities panel ─────────────────────────────────────────────
   const renderSpecialPanel = () => {
     if (gs.status !== "playing") return null;
+    if (gs.currentTurn !== myColor) return null;
+
+    // The Wish dice result is a wholly independent flag from specialMode
+    // (Wish itself clears specialMode back to null once the die is rolled),
+    // so it must be checked on its own — not nested inside `if (specialMode)`
+    // — or the Claim/End Turn buttons never render and the turn gets stuck.
+    // Matches lib/game/rules-16x16.ts's special-ability panel exactly.
+    if (gs.wishDiceResult !== null) {
+      return (
+        <Panel title="Special Ability">
+          {gs.spellMessage && <div className="tb-spell-msg">{gs.spellMessage}</div>}
+          <div className="tb-wish-card">
+            🎲 {gs.wishDiceResult}/10 — {gs.wishDiceResult > 5 ? "Success!" : "No luck"}
+            {gs.wishDiceResult > 5 ? (
+              <button className="tb-spell-btn" onClick={() => handleSpecial("wish-success")}>Claim Wish →</button>
+            ) : (
+              <button className="tb-spell-btn" onClick={() => handleSpecial("wish-fail")}>End Turn</button>
+            )}
+          </div>
+        </Panel>
+      );
+    }
 
     if (gs.specialMode) {
-      if (gs.currentTurn !== myColor) return null;
       const cancellable = gs.specialMode !== "executioner-axe-swing" && gs.specialMode !== "super-queen-second-move";
 
       if (gs.specialMode === "conjurer-revive-select" && gs.specialData?.deadPieces && !gs.specialData?.selectedPiece) {
@@ -855,24 +1060,25 @@ export default function TriBoard16x16({
       return (
         <Panel title="Special Ability">
           <div className="tb-spell-msg">{gs.spellMessage}</div>
-          {gs.wishDiceResult !== null && (
-            <div className="tb-wish-card">
-              🎲 {gs.wishDiceResult}/10 — {gs.wishDiceResult > 5 ? "Success!" : "No luck"}
-              {gs.wishDiceResult > 5 ? (
-                <button className="tb-spell-btn" onClick={() => handleSpecial("wish-success")}>Claim Wish →</button>
-              ) : (
-                <button className="tb-spell-btn" onClick={() => handleSpecial("wish-fail")}>End Turn</button>
-              )}
-            </div>
-          )}
-          {cancellable && gs.wishDiceResult === null && (
+          {cancellable && (
             <button className="tb-leave-btn" style={{ marginTop: 8, width: "100%" }} onClick={cancelSpecial}>✕ Cancel</button>
           )}
         </Panel>
       );
     }
 
-    if (!isMyTurn) return null;
+    if (gs.superMoveMode) {
+      return (
+        <Panel title="Special Ability">
+          <div className="tb-spell-msg" style={{ color: "#ffb347", fontWeight: 700 }}>⚔ Choose a square 3 spaces away to strike</div>
+          <button className="tb-leave-btn" style={{ marginTop: 8, width: "100%" }} onClick={cancelSpecial}>✕ Cancel</button>
+        </Panel>
+      );
+    }
+
+    const selPiece = gs.selectedSquare ? gs.boards[gs.selectedSquare.boardId][gs.selectedSquare.row][gs.selectedSquare.col] : null;
+    const selectedIsPaladin = !!selPiece && selPiece.type === "paladin" && selPiece.color === myColor;
+    const paladinSuperUsed = selPiece?.paladanSuperUsed ?? false;
 
     const sorc = findPieceTri16(gs.boards, myColor, "sorceress");
     const sorcPiece = sorc ? gs.boards[sorc.boardId][sorc.row][sorc.col] : null;
@@ -889,12 +1095,19 @@ export default function TriBoard16x16({
     const mageSac = findMageAdjacentToQueen(gs.boards, myColor);
 
     const hasAny = (sorcPiece && sorcPiece.sorceressSpellsLeft > 0) || wiz || (conjPiece && conjPiece.conjurerSpellsLeft > 0 && hasDead)
-      || (wlPiece && !wlPiece.warlockBindUsed) || (thiefPiece && !thiefPiece.thiefStealUsed) || (tricksterPiece && !tricksterPiece.tricksterStealUsed) || mageSac;
+      || (wlPiece && !wlPiece.warlockBindUsed) || (thiefPiece && !thiefPiece.thiefStealUsed) || (tricksterPiece && !tricksterPiece.tricksterStealUsed) || mageSac || selectedIsPaladin;
     if (!hasAny) return null;
 
     return (
       <Panel title="Special Abilities">
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {selectedIsPaladin && (
+            paladinSuperUsed ? (
+              <span className="tb-spell-btn" style={{ opacity: 0.5, cursor: "default" }}>⚡ Super Used</span>
+            ) : (
+              <button className="tb-spell-btn" style={{ background: "rgba(255,140,0,.18)", borderColor: "rgba(255,140,0,.5)", color: "#ffb347" }} onClick={handleSuperMove}>⚡ Super Move (3-square)</button>
+            )
+          )}
           {sorcPiece && sorcPiece.sorceressSpellsLeft > 0 && (
             <>
               <button className="tb-spell-btn" onClick={() => handleSpecial("sleep")}>😴 Sleep ({sorcPiece.sorceressSpellsLeft})</button>
@@ -936,7 +1149,7 @@ export default function TriBoard16x16({
 
         .tb-title{margin:0;font-size:36px;font-family:'Cinzel',Georgia,serif;font-weight:700;letter-spacing:.02em;background:linear-gradient(100deg,#8a5a18,#f0dfb0,#d4a843,#8a5a18);background-size:220% auto;-webkit-background-clip:text;background-clip:text;color:transparent;animation:titleFloat 4.5s ease-in-out infinite,titleShimmer 6s linear infinite,titleGlow 4.5s ease-in-out infinite;display:inline-block;}
 
-        .tb-root{min-height:100vh;overflow-x:hidden;background:radial-gradient(circle at top,#211307,#050301 65%,#000);color:#fff;font-family:'Cinzel',Georgia,serif;padding:110px ${ROOT_PAD}px 40px;}
+        .tb-root{min-height:100vh;overflow-x:hidden;background-image:url('/X-8x8/background.png');background-repeat:no-repeat;background-size:cover;background-position:center top;background-attachment:scroll;color:#fff;font-family:'Cinzel',Georgia,serif;padding:110px ${ROOT_PAD}px 40px;}
         .tb-panel{padding:12px 13px;border-radius:12px;background:rgba(18,12,6,.55);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(212,168,67,.22);box-shadow:0 10px 30px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.04);animation:panelFadeUp .4s ease both;transition:border-color .25s,box-shadow .25s,transform .25s;}
         .tb-panel:hover{border-color:rgba(212,168,67,.4);box-shadow:0 14px 36px rgba(0,0,0,.5),0 0 24px rgba(212,168,67,.08),inset 0 1px 0 rgba(255,255,255,.05);}
         .tb-panel-title{margin:0 0 9px;color:${GOLD};font-family:'Cinzel',Georgia,serif;font-size:13px;font-weight:700;letter-spacing:.04em;}
@@ -957,10 +1170,11 @@ export default function TriBoard16x16({
         .tb-pass-btn:not(:disabled):active{transform:translateY(0);}
         .tb-leave-btn{padding:11px 16px;border-radius:12px;border:1px solid rgba(220,80,80,.3);background:rgba(120,30,30,.18);color:rgba(255,160,160,.85);font-weight:700;font-family:'Cinzel',Georgia,serif;font-size:12px;cursor:pointer;transition:all .2s;}
         .tb-leave-btn:hover{background:rgba(150,35,35,.32);border-color:rgba(255,100,100,.5);color:#fff;transform:translateY(-1px);}
-        .tb-spell-btn{padding:8px 11px;border-radius:10px;border:1px solid rgba(212,168,67,.4);background:rgba(212,168,67,.12);color:#f0dfb0;font-weight:700;font-family:'Cinzel',Georgia,serif;font-size:11px;cursor:pointer;transition:all .2s;}
-        .tb-spell-btn:hover{background:rgba(212,168,67,.24);transform:translateY(-1px);}
-        .tb-spell-msg{font-size:11.5px;color:rgba(255,255,255,.75);line-height:1.4;}
-        .tb-wish-card{margin-top:8px;padding:8px;border-radius:8px;background:rgba(0,0,0,.35);font-size:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+        .tb-spell-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:12px;border:1px solid rgba(212,168,67,.45);background:linear-gradient(155deg,rgba(212,168,67,.16),rgba(255,255,255,.02));backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#f0dfb0;font-weight:700;font-family:'Cinzel',Georgia,serif;font-size:11.5px;letter-spacing:.02em;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.08);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease,background .18s ease;}
+        .tb-spell-btn:hover{transform:translateY(-2px);border-color:rgba(212,168,67,.85);background:linear-gradient(155deg,rgba(212,168,67,.3),rgba(255,255,255,.04));box-shadow:0 10px 22px rgba(0,0,0,.5),0 0 18px rgba(212,168,67,.3),inset 0 1px 0 rgba(255,255,255,.12);}
+        .tb-spell-btn:active{transform:translateY(0) scale(.97);}
+        .tb-spell-msg{font-size:12px;color:rgba(255,255,255,.8);line-height:1.5;}
+        .tb-wish-card{margin-top:10px;padding:14px 16px;border-radius:14px;background:linear-gradient(155deg,rgba(255,255,255,.06),rgba(255,255,255,.015));border:1px solid rgba(212,168,67,.35);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 8px 20px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.06);font-size:13px;display:flex;flex-direction:column;align-items:center;gap:9px;text-align:center;}
         .tb-turn-toast{position:fixed;top:110px;left:50%;transform:translateX(-50%);z-index:500;padding:14px 26px;border-radius:14px;background:rgba(8,5,2,.9);backdrop-filter:blur(10px);border:1px solid;display:flex;flex-direction:column;align-items:center;gap:2px;animation:toastSlideIn .3s cubic-bezier(.22,1,.36,1) both;pointer-events:none;font-family:'Cinzel',Georgia,serif;}
         .tb-turn-toast span:first-child{font-weight:900;font-size:16px;letter-spacing:.08em;text-transform:uppercase;}
         .tb-turn-toast-sub{font-size:11px;color:rgba(255,255,255,.55);}
@@ -981,7 +1195,37 @@ export default function TriBoard16x16({
           .tb-root{padding:96px 12px 32px;}
           .tb-turn-toast{top:88px;padding:11px 18px;}
         }
-        .tb-ability-chip{display:flex;align-items:center;gap:5px;padding:3px 6px;border-radius:8px;background:rgba(255,255,255,.04);font-size:10px;color:rgba(255,255,255,.7);cursor:help;}
+        .tb-ctrl-btn{display:flex;align-items:flex-start;gap:11px;width:100%;text-align:left;padding:12px 13px;border-radius:13px;cursor:pointer;font-family:'Cinzel',Georgia,serif;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 6px 16px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.06);transition:transform .18s ease,box-shadow .18s ease;}
+        .tb-ctrl-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 24px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.12);}
+        .tb-ctrl-btn:active:not(:disabled){transform:translateY(0) scale(.98);}
+        .tb-ctrl-btn:disabled{cursor:default;}
+        .tb-ctrl-icon{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;font-size:15px;flex-shrink:0;}
+        .tb-modal-backdrop{position:fixed;inset:0;z-index:960;background:rgba(0,0,0,.88);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:center;padding:20px;animation:panelFadeUp .25s ease both;}
+        .tb-modal-card{width:min(820px,94vw);max-height:88vh;overflow-y:auto;border-radius:24px;padding:28px 26px;background:linear-gradient(155deg,#0e0902 0%,#1a1005 45%,#0e0902 100%);border:1px solid rgba(212,168,67,.28);box-shadow:0 40px 100px rgba(0,0,0,.85),0 0 60px rgba(212,168,67,.08),inset 0 1px 0 rgba(255,255,255,.05);font-family:'Cinzel',Georgia,serif;}
+        .tb-modal-close{width:38px;height:38px;border-radius:11px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:rgba(255,255,255,.55);cursor:pointer;font-size:16px;flex-shrink:0;transition:background .15s,color .15s;}
+        .tb-modal-close:hover{background:rgba(255,255,255,.1);color:#fff;}
+        .tb-modal-scroll::-webkit-scrollbar,.tb-modal-card::-webkit-scrollbar{width:5px;}
+        .tb-modal-scroll::-webkit-scrollbar-thumb,.tb-modal-card::-webkit-scrollbar-thumb{background:rgba(212,168,67,.25);border-radius:5px;}
+        .tb-rule-card{display:flex;gap:11px;padding:13px 14px;border-radius:14px;background:rgba(255,255,255,.03);border:1px solid rgba(212,168,67,.12);transition:border-color .2s,background .2s;}
+        .tb-rule-card:hover{background:rgba(212,168,67,.05);border-color:rgba(212,168,67,.28);}
+        .tb-rule-num{width:22px;height:22px;border-radius:50%;background:rgba(212,168,67,.14);border:1px solid rgba(212,168,67,.4);color:${GOLD};font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+        .tb-piece-card{padding:20px 20px;border-radius:18px;background:linear-gradient(145deg,rgba(255,255,255,.07),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.12);box-shadow:0 8px 18px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.06);transition:transform .18s,border-color .18s,box-shadow .18s,background .18s;}
+        .tb-piece-card:hover{transform:translateY(-3px) scale(1.01);border-color:rgba(212,168,67,.55);background:linear-gradient(145deg,rgba(212,168,67,.16),rgba(255,255,255,.03));box-shadow:0 16px 32px rgba(0,0,0,.55),0 0 20px rgba(212,168,67,.22),inset 0 1px 0 rgba(255,255,255,.1);}
+        .tb-piece-icon{display:flex;align-items:center;justify-content:center;width:60px;height:60px;border-radius:16px;background:#050505;border:1px solid rgba(255,255,255,.14);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 8px 16px rgba(0,0,0,.6);flex-shrink:0;overflow:hidden;font-size:26px;}
+        .tb-spell-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;}
+        .tb-spell-card{position:relative;padding:18px 17px;border-radius:16px;background:linear-gradient(155deg,rgba(255,255,255,.06),rgba(255,255,255,.015));border:1px solid rgba(212,168,67,.25);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 8px 20px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.05);transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease,background .2s ease;overflow:hidden;}
+        .tb-spell-card::before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,rgba(212,168,67,.08),transparent 60%);pointer-events:none;}
+        .tb-spell-card:hover{transform:translateY(-4px);border-color:rgba(212,168,67,.6);background:linear-gradient(155deg,rgba(212,168,67,.14),rgba(255,255,255,.02));box-shadow:0 18px 36px rgba(0,0,0,.55),0 0 26px rgba(212,168,67,.25),inset 0 1px 0 rgba(255,255,255,.1);}
+        .tb-spell-icon{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:13px;font-size:21px;margin-bottom:12px;background:rgba(212,168,67,.14);border:1px solid rgba(212,168,67,.4);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 0 14px rgba(212,168,67,.15);transition:transform .2s ease,box-shadow .2s ease;}
+        .tb-spell-card:hover .tb-spell-icon{transform:scale(1.08) rotate(-4deg);box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 0 22px rgba(212,168,67,.4);}
+        .tb-spell-name{margin:0 0 2px;font-size:14.5px;font-weight:800;color:#fff;letter-spacing:.02em;text-shadow:0 2px 6px rgba(0,0,0,.7);}
+        .tb-spell-piece{margin:0 0 10px;font-size:10px;font-weight:700;color:${GOLD};text-transform:uppercase;letter-spacing:.08em;}
+        .tb-spell-body{margin:0 0 12px;font-size:12px;color:rgba(255,255,255,.75);line-height:1.6;}
+        .tb-spell-tag{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border:1px solid;}
+        .tb-spell-tag-global{background:rgba(90,180,255,.14);border-color:rgba(90,180,255,.5);color:#8fc6ff;}
+        .tb-spell-tag-local{background:rgba(212,168,67,.14);border-color:rgba(212,168,67,.5);color:#f0dfb0;}
+        .tb-spell-tag-passive{background:rgba(180,180,190,.14);border-color:rgba(180,180,190,.4);color:rgba(255,255,255,.7);}
+        @media (max-width:760px){.tb-spell-grid{grid-template-columns:1fr;}}
         .tcsq{position:relative;overflow:hidden;cursor:pointer;transition:filter .1s;}
         .tcsq:hover{filter:brightness(1.2);}
         .tcsq:hover .tcpi{transform:translate(-50%,-50%) scale(1.07) translateY(-2px);}
@@ -1125,55 +1369,109 @@ export default function TriBoard16x16({
             )}
           </div>
 
-          {/* ── RIGHT: TRI RULES + ABILITIES ── */}
+          {/* ── RIGHT: BATTLE GUIDE ── */}
           <div className="tb-col-right" style={{ display: "grid", gap: 16 }}>
-            <Panel title="Tri Rules">
-              <div style={{ display: "grid", gap: 8 }}>
-                {RULES.map((r, i) => (
-                  <div key={i} style={{ display: "flex", gap: 7 }}>
-                    <div style={{ width: 16, height: 16, borderRadius: "50%", background: "rgba(212,168,67,.14)", border: "1px solid rgba(212,168,67,.4)", color: GOLD, fontSize: 9.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      {i + 1}
-                    </div>
-                    <div>
-                      <div style={{ color: "#f0dfb0", fontWeight: 700, fontSize: 11.5, marginBottom: 1 }}>{r.title}</div>
-                      <div style={{ color: "rgba(255,255,255,.62)", fontSize: 10.5, lineHeight: 1.4 }}>{r.body}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Panel>
-
-            <Panel title="Piece Abilities">
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                {(Object.keys(PIECE_INFO) as PieceType16[]).map((type) => (
-                  <div key={type} className="tb-ability-chip" title={`${PIECE_INFO[type].name}: ${PIECE_INFO[type].special}`}>
-                    <span>{EMOJI[type]}</span>
-                    <span>{PIECE_INFO[type].name}</span>
-                  </div>
-                ))}
+            <Panel title="Battle Guide">
+              <div style={{ display: "grid", gap: 10 }}>
+                <ControlCard icon="📜" accent="#4ade80" title="Tri Rules" subtitle="How to play and win"
+                  onClick={() => setShowTriRules(true)} />
+                <ControlCard icon="🛡️" accent="#c084fc" title="Piece Abilities" subtitle="Every piece and its powers"
+                  onClick={() => setShowPieceAbilities(true)} />
+                <ControlCard icon="🏆" accent="#ffb347" title="Game Flow / Victory" subtitle="From kingdom to conquest"
+                  onClick={() => setShowGameFlow(true)} />
+                <ControlCard icon="🔮" accent="#5ab4ff" title="Spells / Special Abilities" subtitle="Sorceress, Wizard, Conjurer & more"
+                  onClick={() => setShowSpells(true)} />
               </div>
             </Panel>
           </div>
         </div>
 
-        {/* ── GAME FLOW ── */}
-        <div style={{ marginTop: 30, borderRadius: 16, background: "rgba(10,7,3,.72)", border: "1px solid rgba(212,168,67,.22)", boxShadow: "0 10px 30px rgba(0,0,0,.4)", overflow: "hidden" }}>
-          <div style={{ textAlign: "center", padding: "10px 0", borderBottom: "1px solid rgba(212,168,67,.18)", color: GOLD, fontWeight: 800, letterSpacing: ".12em", fontSize: 13 }}>GAME FLOW</div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: 14, padding: "20px 24px" }}>
-            {GAME_FLOW.map((step, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, width: 110 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(0,0,0,.5)", border: "1px solid rgba(212,168,67,.35)", display: "flex", alignItems: "center", justifyContent: "center" }}>{step.icon}</div>
-                  <div style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,.7)", lineHeight: 1.35 }}>
-                    <div>{step.lines[0]}</div>
-                    <div>{step.lines[1]}</div>
+        {/* ── TRI RULES MODAL ── */}
+        {showTriRules && (
+          <TbModal title="Tri Board Rules" subtitle="Kingdoms · Tri Gate · Combat" icon="⚔️" onClose={() => setShowTriRules(false)}>
+            <div className="tb-modal-scroll" style={{ maxHeight: "64vh", overflowY: "auto", display: "grid", gap: 10, paddingRight: 4 }}>
+              {RULES.map((r, i) => (
+                <div key={i} className="tb-rule-card">
+                  <div className="tb-rule-num">{i + 1}</div>
+                  <div>
+                    <div style={{ color: "#f0dfb0", fontWeight: 800, fontSize: 13, marginBottom: 3, letterSpacing: ".03em" }}>{r.title}</div>
+                    <div style={{ color: "rgba(255,255,255,.68)", fontSize: 12.5, lineHeight: 1.6 }}>{r.body}</div>
                   </div>
                 </div>
-                {i < GAME_FLOW.length - 1 && <span style={{ color: GOLD, fontSize: 18, opacity: 0.6 }}>→</span>}
-              </div>
-            ))}
-          </div>
-        </div>
+              ))}
+            </div>
+            <div style={{ textAlign: "center", padding: "14px 0 0", borderTop: "1px solid rgba(212,168,67,.12)", marginTop: 14 }}>
+              <p style={{ margin: 0, fontSize: 11, color: "rgba(212,168,67,.4)", fontStyle: "italic" }}>"Three crowns, one Tri Gate — only one kingdom walks away."</p>
+            </div>
+          </TbModal>
+        )}
+
+        {/* ── PIECE ABILITIES MODAL ── */}
+        {showPieceAbilities && (
+          <TbModal title="Piece Abilities" subtitle="Movement · Powers · Combat" icon="🛡️" onClose={() => setShowPieceAbilities(false)}>
+            <div className="tb-modal-scroll" style={{ maxHeight: "68vh", overflowY: "auto", display: "grid", gridTemplateColumns: isCompact ? "1fr" : "1fr 1fr", gap: 14, paddingRight: 4 }}>
+              {(Object.keys(PIECE_INFO) as PieceType16[]).map((type) => (
+                <div key={type} className="tb-piece-card">
+                  <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10 }}>
+                    <span className="tb-piece-icon"><PieceAbilityIcon pieceKey={type} /></span>
+                    <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#fff", letterSpacing: ".03em", textShadow: "0 2px 8px rgba(0,0,0,.8)" }}>{PIECE_INFO[type].name}</p>
+                  </div>
+                  <p style={{ margin: 0, fontSize: 13.5, color: "rgba(255,255,255,.8)", lineHeight: 1.7 }}>{PIECE_INFO[type].special}</p>
+                </div>
+              ))}
+            </div>
+          </TbModal>
+        )}
+
+        {/* ── GAME FLOW / VICTORY RULES MODAL ── */}
+        {showGameFlow && (
+          <TbModal title="Game Flow & Victory" subtitle="From Kingdom to Conquest" icon="🏆" onClose={() => setShowGameFlow(false)}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: 14, padding: "4px 0 18px" }}>
+              {GAME_FLOW.map((step, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, width: 96 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(0,0,0,.5)", border: "1px solid rgba(212,168,67,.35)", display: "flex", alignItems: "center", justifyContent: "center" }}>{step.icon}</div>
+                    <div style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,.7)", lineHeight: 1.35 }}>
+                      <div>{step.lines[0]}</div>
+                      <div>{step.lines[1]}</div>
+                    </div>
+                  </div>
+                  {i < GAME_FLOW.length - 1 && <span style={{ color: GOLD, fontSize: 18, opacity: 0.6 }}>→</span>}
+                </div>
+              ))}
+            </div>
+            <div className="tb-modal-scroll" style={{ maxHeight: "50vh", overflowY: "auto", display: "grid", gap: 10, paddingRight: 4, borderTop: "1px solid rgba(212,168,67,.12)", paddingTop: 14 }}>
+              {VICTORY_RULES.map((r, i) => (
+                <div key={i} className="tb-rule-card">
+                  <div className="tb-rule-num">{i + 1}</div>
+                  <div>
+                    <div style={{ color: "#f0dfb0", fontWeight: 800, fontSize: 13, marginBottom: 3, letterSpacing: ".03em" }}>{r.title}</div>
+                    <div style={{ color: "rgba(255,255,255,.68)", fontSize: 12.5, lineHeight: 1.6 }}>{r.body}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </TbModal>
+        )}
+
+        {/* ── SPELLS / SPECIAL ABILITIES MODAL ── */}
+        {showSpells && (
+          <TbModal title="Spells & Special Abilities" subtitle="Sorceress · Wizard · Conjurer · Warlock · Thief · Trickster" icon="🔮" onClose={() => setShowSpells(false)}>
+            <div className="tb-modal-scroll tb-spell-grid" style={{ maxHeight: "68vh", overflowY: "auto", paddingRight: 4, paddingBottom: 4 }}>
+              {SPELLS.map((s, i) => (
+                <div key={i} className="tb-spell-card">
+                  <span className="tb-spell-icon">{s.icon}</span>
+                  <p className="tb-spell-name">{s.name}</p>
+                  <p className="tb-spell-piece">{s.piece}</p>
+                  <p className="tb-spell-body">{s.body}</p>
+                  <span className={`tb-spell-tag ${s.range === "Global" ? "tb-spell-tag-global" : s.range === "Passive" ? "tb-spell-tag-passive" : "tb-spell-tag-local"}`}>
+                    {s.range === "Global" ? "🌐" : s.range === "Passive" ? "♟" : "🔒"} {s.range}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </TbModal>
+        )}
 
         {showLeaveConfirm && (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 998 }}>

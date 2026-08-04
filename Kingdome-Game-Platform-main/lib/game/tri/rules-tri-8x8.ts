@@ -36,13 +36,14 @@ export interface TriGameState8 {
   validMoves: TriSquare[];
   superMoves: TriSquare[];
   superMoveMode: boolean;
+  castleMoves: TriSquare[];
   status: "playing" | "finished";
   winner: TriColor | null;
   check: TriColor | null;
   lastMove: { from: TriSquare; to: TriSquare } | null;
-  passUsed: Record<TriColor, boolean>;
   lastMoveQuality: "great" | "risky" | "normal" | null;
   lastMoveTo: TriSquare | null;
+  justEliminated: TriColor | null;
 }
 
 const PIECE_VALUE: Record<PieceType, number> = {
@@ -101,7 +102,7 @@ export function cloneTriGameState(state: TriGameState8): TriGameState8 {
     },
     validMoves: [...state.validMoves],
     superMoves: [...state.superMoves],
-    passUsed: { ...state.passUsed },
+    castleMoves: [...state.castleMoves],
   };
 }
 
@@ -125,26 +126,33 @@ export function createEmptyTriBoard(): Board {
 
 /**
  * Each player starts on their own kingdom board, positioned on the edge
- * FARTHEST from their connector so they must march toward the Tri Gate:
- * White sits above the battlefield and starts at the top (row 0/1) of its
- * board, since its connector is on row 7. Black and Grey sit below the
- * battlefield and start at the bottom (row 6/7) of their boards, since their
- * connectors are on row 0.
+ * FARTHEST from the Tri Gate (their own outer/back edge) so they must march
+ * toward the center — never spawning next to it. Same 8-wide classic back
+ * rank (Rook,Knight,Bishop,King,Queen,Bishop,Knight,Rook) as the X 8x8
+ * board, just laid across a plain (unrotated) 8x8 kingdom board instead of
+ * a merged cross grid.
  * Board A = white, Board B = black, Board C = grey.
  * Board T is the shared triangular battlefield — empty until pieces cross into it.
+ *
+ * All three kingdom boards render as plain, unrotated 8x8 squares (no
+ * diamond/45° rotation) — see renderKingdomBoard in the component. Board A
+ * is stacked ABOVE the Tri Gate, so its outer edge is its own top row (row
+ * 0) and its near-gate edge is its bottom row (row 7). Boards B and C are
+ * stacked BELOW the Tri Gate, so their outer edge is their own bottom row
+ * (row 7) and their near-gate edge is their top row (row 0).
  */
 export function createPlayerBoard(color: TriColor): Board {
   const b = createEmptyBoard();
   const back: PieceType[] = ["rook", "knight", "bishop", "king", "queen", "bishop", "knight", "rook"];
+  const prefix = color[0];
 
+  // white (Board A) sits above the Tri Gate — outer edge = row 0 (top).
   const backRow = color === "white" ? 0 : 7;
   const frontRow = color === "white" ? 1 : 6;
-  const prefix = color[0];
 
   back.forEach((type, col) => {
     b[backRow][col] = mkPiece(type, color, `${prefix}-${type}-${col}`);
   });
-
   for (let col = 0; col < 8; col++) {
     b[frontRow][col] = mkPiece("paladin", color, `${prefix}-pal-${col}`);
   }
@@ -172,17 +180,14 @@ export function createInitialTriGameState8(): TriGameState8 {
     validMoves: [],
     superMoves: [],
     superMoveMode: false,
+    castleMoves: [],
     status: "playing",
     winner: null,
     check: null,
     lastMove: null,
-    passUsed: {
-      white: false,
-      black: false,
-      grey: false,
-    },
     lastMoveQuality: null,
     lastMoveTo: null,
+    justEliminated: null,
   };
 }
 
@@ -331,11 +336,59 @@ export function getSuperMoves(board: Board, row: number, col: number, boardId: T
   return moves;
 }
 
+// ─── PALADIN REVERSE CASTLE — swap with an adjacent non-paladin ally ────────
+export function getCastleMoves(board: Board, row: number, col: number, boardId: TriBoardId): Square[] {
+  const piece = board[row][col];
+  if (!piece || piece.type !== "paladin") return [];
+
+  const dirs: [number, number][] = [
+    [-1, -1], [-1, 0], [-1, 1],
+    [0, -1],           [0, 1],
+    [1, -1],  [1, 0],  [1, 1],
+  ];
+
+  const moves: Square[] = [];
+  dirs.forEach(([dr, dc]) => {
+    const r = row + dr;
+    const c = col + dc;
+    if (!inBoundsFor(boardId, r, c)) return;
+    const ally = board[r][c];
+    if (ally && ally.color === piece.color && ally.type !== "paladin") moves.push({ row: r, col: c });
+  });
+  return moves;
+}
+
+export function getLegalCastleMovesTri8(state: TriGameState8, from: TriSquare): TriSquare[] {
+  const board = state.boards[from.boardId];
+  const piece = board[from.row][from.col];
+  if (!piece || piece.color !== state.currentTurn) return [];
+
+  return getCastleMoves(board, from.row, from.col, from.boardId).map(m => ({
+    boardId: from.boardId,
+    row: m.row,
+    col: m.col,
+  }));
+}
+
 // ─── CONNECTORS ────────────────────────────────────────────────────────────
 // One-way doorways: 3 cells on the edge of each kingdom board nearest the
 // triangle, each mapped to a specific cell on the shared battlefield. A piece
 // standing on one of these cells gains an extra move onto the battlefield.
 // There is no move back — once a piece is on "T" it stays there.
+//
+// White's near-gate edge is row 7 (Board A sits above the Tri Gate, whose
+// apex touches A's bottom row, horizontally centered) → crosses into T's
+// apex region via A's own center columns.
+//
+// Black and grey's near-gate edge is row 0 (Boards B/C sit below the Tri
+// Gate, whose base touches their top row) — but B/C are NOT centered under
+// the gate: B sits to the left of the triangle (its right edge touches the
+// gate's left corner) and C sits to the right (its left edge touches the
+// gate's right corner). So their connector cells must sit at that same
+// near corner — B's rightmost columns, C's leftmost columns — not the
+// board center, or the on-screen gate wire and the actual doorway cells
+// point at two different places and the crossing looks broken/inaccessible
+// even though the top board's centered doorway looks fine.
 interface ConnectorLink {
   from: Square;
   to: Square;
@@ -488,6 +541,7 @@ export function executeMoveTri8(
   ns.validMoves = [];
   ns.superMoves = [];
   ns.superMoveMode = false;
+  ns.castleMoves = [];
 
   // Elimination must be tracked against the FULL original color set, not the
   // already-shrunk turnOrder — otherwise a color eliminated on move N drops
@@ -495,6 +549,7 @@ export function executeMoveTri8(
   // wiping the eliminated flag back off on move N+1.
   const remainingPlayers = getRemainingPlayers(ns.boards, ns.turnOrder);
   ns.eliminatedPlayers = ALL_COLORS.filter(p => !remainingPlayers.includes(p));
+  ns.justEliminated = ns.eliminatedPlayers.find(c => !state.eliminatedPlayers.includes(c)) ?? null;
 
   if (remainingPlayers.length === 1) {
     ns.status = "finished";
@@ -506,6 +561,32 @@ export function executeMoveTri8(
   ns.currentTurn = getNextTurn(piece.color, ns.turnOrder);
   ns.status = "playing";
   ns.check = null;
+
+  return ns;
+}
+
+// ─── PALADIN REVERSE CASTLE (execute) — swap the paladin with an ally ──────
+export function executeCastleTri8(state: TriGameState8, from: TriSquare, to: TriSquare): TriGameState8 {
+  if (from.boardId !== to.boardId) return state;
+  const ns = cloneTriGameState(state);
+  const board = ns.boards[from.boardId];
+  const paladin = board[from.row][from.col];
+  const ally = board[to.row][to.col];
+  if (!paladin || paladin.type !== "paladin" || !ally || ally.type === "paladin" || ally.color !== paladin.color) {
+    return state;
+  }
+
+  board[from.row][from.col] = { ...ally, hasMoved: true };
+  board[to.row][to.col] = { ...paladin, hasMoved: true };
+
+  ns.lastMove = { from, to };
+  ns.selectedSquare = null;
+  ns.validMoves = [];
+  ns.superMoves = [];
+  ns.superMoveMode = false;
+  ns.castleMoves = [];
+  ns.currentTurn = getNextTurn(paladin.color, ns.turnOrder);
+  ns.status = "playing";
 
   return ns;
 }
@@ -532,9 +613,11 @@ export function eliminatePlayerTri8(state: TriGameState8, color: TriColor): TriG
   ns.validMoves = [];
   ns.superMoves = [];
   ns.superMoveMode = false;
+  ns.castleMoves = [];
 
   const remainingPlayers = getRemainingPlayers(ns.boards, ns.turnOrder);
   ns.eliminatedPlayers = ALL_COLORS.filter(p => !remainingPlayers.includes(p));
+  ns.justEliminated = ns.eliminatedPlayers.find(c => !state.eliminatedPlayers.includes(c)) ?? null;
 
   if (remainingPlayers.length === 1) {
     ns.status = "finished";
@@ -559,18 +642,17 @@ export function eliminatePlayerTri8(state: TriGameState8, color: TriColor): TriG
   return ns;
 }
 
+// ─── PASS TURN (Mexican Standoff) — unlimited, same as X 8x8 ────────────────
 export function passTurnTri8(state: TriGameState8): TriGameState8 {
   const ns = cloneTriGameState(state);
   const color = ns.currentTurn;
 
-  if (ns.passUsed[color]) return state;
-
-  ns.passUsed[color] = true;
   ns.currentTurn = getNextTurn(color, ns.turnOrder);
   ns.selectedSquare = null;
   ns.validMoves = [];
   ns.superMoves = [];
   ns.superMoveMode = false;
+  ns.castleMoves = [];
   ns.lastMoveQuality = null;
   ns.lastMoveTo = null;
 

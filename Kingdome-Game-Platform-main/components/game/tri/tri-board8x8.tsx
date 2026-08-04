@@ -5,9 +5,11 @@ import { Socket } from "socket.io-client";
 import {
   createInitialTriGameState8,
   executeMoveTri8,
+  executeCastleTri8,
   eliminatePlayerTri8,
   getLegalMovesTri8,
   getLegalSuperMovesTri8,
+  getLegalCastleMovesTri8,
   getNormalMoves,
   getSuperMoves,
   passTurnTri8,
@@ -15,6 +17,7 @@ import {
   isConnectorCell,
   ALL_BOARD_IDS,
   ALL_COLORS,
+  KINGDOM_SIZE,
   TRI_ROWS,
   TRI_COLS,
   TRI_COL_CENTER,
@@ -23,6 +26,7 @@ import {
   type TriSquare,
   type TriGameState8,
   type Piece,
+  type PieceType,
 } from "@/lib/game/tri/rules-tri-8x8";
 import Fireworks from "@/components/game/fireworks";
 
@@ -51,9 +55,6 @@ const PIECE_IMAGES: Record<string, string> = {
 function pieceImgSrc(p: Piece) {
   return PIECE_IMAGES[`${p.color}-${p.type}`];
 }
-function pieceFilter(_p: Piece): string | undefined {
-  return undefined;
-}
 
 const AC: Record<TriColor, string> = {
   white: "#f0dfb0",
@@ -67,17 +68,24 @@ const DOT: Record<TriColor, string> = {
 };
 const GOLD = "#d4a843";
 const DANGER = "#ff5050";
+const SAFE = "#3ecf6e";
+const SELECT = "#4aa8ff";
+const SUPER = "rgba(255,140,0,.95)";
 
 const BOARD_COLOR: Record<TriBoardId, TriColor | null> = { A: "white", B: "black", C: "grey", T: null };
 
 const RULES = [
-  { title: "Move inside your kingdom", body: "Slide, jump and capture using the same rules as the classic 8x8 board." },
+  { title: "Move inside your kingdom", body: "Slide, jump and capture using the same rules as the classic 8x8 board — 6 piece types, each with its own movement shape." },
   { title: "Reach a connector", body: "Each kingdom has 3 connector cells (glowing gold) on the edge facing the Tri Gate." },
   { title: "Enter the Tri Gate", body: "From a connector, cross into the large shared battlefield at the center." },
   { title: "Fight in the battlefield", body: "The Tri Gate is one real board — White, Black and Grey all move and clash on it together. Crossing is one-way; there is no return." },
-  { title: "Capture opponents", body: "Capture any enemy piece your piece can legally reach, on any board." },
-  { title: "Win the war", body: "A player is eliminated only once every one of their pieces is captured. The last kingdom standing wins." },
+  { title: "Paladin Super Strike", body: "Each Paladin may, once per game, leap 2 squares in any direction instead of its normal 1-square step." },
+  { title: "Win the war", body: "A player is eliminated only once every one of their pieces is gone from every board. The last kingdom with any pieces left wins." },
 ];
+
+// ─── VICTORY RULES (subset of RULES shown inside the Game Flow / Victory
+// modal, right alongside the visual flow steps) ─────────────────────────────
+const VICTORY_RULES = RULES.slice(5);
 
 function LegendSwatch({ children }: { children: React.ReactNode }) {
   return (
@@ -87,15 +95,11 @@ function LegendSwatch({ children }: { children: React.ReactNode }) {
   );
 }
 
-const SAFE_LEGEND = "#3ecf6e";
-const SELECT_LEGEND = "#4aa8ff";
-
 const LEGEND: { icon: React.ReactNode; label: string }[] = [
-  { label: "Your Pieces", icon: <LegendSwatch><img src="/pieces/white/King - White.png" alt="" style={{ width: 15, height: 15, objectFit: "contain" }} /></LegendSwatch> },
-  { label: "Opponent Pieces", icon: <LegendSwatch><img src="/pieces/black/King - Black.png" alt="" style={{ width: 15, height: 15, objectFit: "contain" }} /></LegendSwatch> },
-  { label: "Selected Piece", icon: <LegendSwatch><div style={{ width: 14, height: 14, borderRadius: 3, border: `2px solid ${SELECT_LEGEND}`, boxShadow: `0 0 8px ${SELECT_LEGEND}99` }} /></LegendSwatch> },
-  { label: "Safe / Recommended Move", icon: <LegendSwatch><div style={{ width: 10, height: 10, borderRadius: "50%", background: SAFE_LEGEND, boxShadow: `0 0 8px ${SAFE_LEGEND}99` }} /></LegendSwatch> },
+  { label: "Selected Piece", icon: <LegendSwatch><div style={{ width: 14, height: 14, borderRadius: 3, border: `2px solid ${SELECT}`, boxShadow: `0 0 8px ${SELECT}99` }} /></LegendSwatch> },
+  { label: "Safe / Recommended Move", icon: <LegendSwatch><div style={{ width: 10, height: 10, borderRadius: "50%", background: SAFE, boxShadow: `0 0 8px ${SAFE}99` }} /></LegendSwatch> },
   { label: "Connector / Gate Crossing", icon: <LegendSwatch><div style={{ width: 10, height: 10, background: GOLD, transform: "rotate(45deg)", boxShadow: `0 0 8px ${GOLD}99` }} /></LegendSwatch> },
+  { label: "Paladin Super Strike", icon: <LegendSwatch><div style={{ width: 10, height: 10, borderRadius: "50%", background: SUPER, boxShadow: `0 0 8px ${SUPER}` }} /></LegendSwatch> },
   { label: "Danger Zone / Risky Move", icon: <LegendSwatch><div style={{ width: 14, height: 14, borderRadius: "50%", border: `2px solid ${DANGER}`, boxShadow: `0 0 8px ${DANGER}99` }} /></LegendSwatch> },
 ];
 
@@ -103,9 +107,124 @@ const GAME_FLOW: { icon: React.ReactNode; lines: [string, string] }[] = [
   { icon: <span style={{ fontSize: 18 }}>♟</span>, lines: ["Move inside", "your kingdom"] },
   { icon: <div style={{ width: 12, height: 12, background: GOLD, transform: "rotate(45deg)" }} />, lines: ["Reach a", "connector cell"] },
   { icon: <span style={{ fontSize: 16, color: "#5ab4ff" }}>➤</span>, lines: ["Cross into", "the Tri Gate"] },
-  { icon: <span style={{ fontSize: 17 }}>⚔</span>, lines: ["Fight and capture", "on the battlefield"] },
-  { icon: <span style={{ fontSize: 17 }}>🏆</span>, lines: ["Eliminate all", "opponents to win"] },
+  { icon: <span style={{ fontSize: 17 }}>⚔</span>, lines: ["Eliminate every", "enemy piece"] },
+  { icon: <span style={{ fontSize: 17 }}>🏆</span>, lines: ["Last kingdom", "standing wins"] },
 ];
+
+const EMOJI: Record<PieceType, string> = {
+  king: "♔", queen: "♕", rook: "♖", bishop: "♗", knight: "♘", paladin: "🛡️",
+};
+
+// ─── Real character piece art (same source as the X 8x8 Battle Guide) ──────
+const PIECE_ICON_SRC: Record<PieceType, string> = {
+  king: "/all-characters/King.png",
+  queen: "/all-characters/Queen.png",
+  rook: "/all-characters/Rook.png",
+  bishop: "/all-characters/Bishop.png",
+  knight: "/all-characters/Knight.png",
+  paladin: "/all-characters/Paladin.png",
+};
+
+function PieceAbilityIcon({ pieceKey }: { pieceKey: PieceType }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <>{EMOJI[pieceKey]}</>;
+  return (
+    <img
+      src={PIECE_ICON_SRC[pieceKey]}
+      alt={pieceKey}
+      onError={() => setFailed(true)}
+      style={{ width: "84%", height: "84%", objectFit: "contain", pointerEvents: "none" }}
+    />
+  );
+}
+
+const PIECE_INFO: Record<PieceType, { name: string; special: string }> = {
+  king: { name: "King", special: "Steps one square in any direction. Losing it is just a normal capture — you keep fighting until every piece you have is gone." },
+  queen: { name: "Queen", special: "Slides any distance in any direction." },
+  rook: { name: "Rook", special: "Slides any distance horizontally or vertically." },
+  bishop: { name: "Bishop", special: "Slides any distance diagonally." },
+  knight: { name: "Knight", special: "Jumps in an L-shape, ignoring pieces in between." },
+  paladin: { name: "Paladin", special: "Steps one square like a King. Once per game, may instead leap 2 squares in any direction (Super Strike). May also swap places with an adjacent ally (Reverse Castle)." },
+};
+
+// ─── ELIMINATION POPUP — same style/behavior as the X 8x8 board's ──────────
+function EliminationPopup({ eliminated, playerNames, onClose }: { eliminated: TriColor; playerNames: Record<TriColor, string>; onClose: () => void }) {
+  useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, []);
+  const ac = AC[eliminated];
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 970, background: "rgba(0,0,0,.7)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
+      <div style={{ textAlign: "center", padding: "44px 56px", borderRadius: 24, background: "linear-gradient(160deg,#1a0505,#2a0808)", border: `1px solid ${ac}40`, boxShadow: "0 0 60px rgba(255,50,50,.3),0 30px 80px rgba(0,0,0,.8)", fontFamily: "'Cinzel',Georgia,serif" }}>
+        <div style={{ fontSize: 64, marginBottom: 14, lineHeight: 1 }}>💀</div>
+        <h2 style={{ fontSize: 28, color: "#ff8080", margin: "0 0 8px", fontWeight: 700 }}>Eliminated!</h2>
+        <p style={{ fontSize: 16, color: `${ac}cc`, margin: "0 0 6px", fontWeight: 600 }}>{playerNames[eliminated] || eliminated} ({eliminated.charAt(0).toUpperCase() + eliminated.slice(1)} Kingdom)</p>
+        <p style={{ fontSize: 13, color: "rgba(255,255,255,.4)", margin: "0 0 20px", fontStyle: "italic" }}>has fallen from the battlefield</p>
+        <p style={{ fontSize: 12, color: "rgba(255,180,180,.5)" }}>The remaining kingdoms continue their war...</p>
+      </div>
+    </div>
+  );
+}
+
+function CapturedTray({ pieces }: { pieces: Piece[] }) {
+  if (pieces.length === 0) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
+      {pieces.slice(0, 6).map((p, i) => (
+        <img key={i} src={pieceImgSrc(p)} alt={`${p.color} ${p.type}`} style={{ width: 16, height: 16, objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,.8))" }} />
+      ))}
+      {pieces.length > 6 && <span style={{ fontSize: 10, color: "rgba(255,255,255,.5)", alignSelf: "center" }}>+{pieces.length - 6}</span>}
+    </div>
+  );
+}
+
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="tb-panel">
+      <h3 className="tb-panel-title">{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+// ─── CONTROL CARD — modern expandable action button used in the right panel,
+// same premium icon-badge + title/subtitle pattern as the X 8x8 board's
+// "Game Controls" list ──────────────────────────────────────────────────────
+function ControlCard({ icon, title, subtitle, accent, onClick, disabled }: {
+  icon: string; title: string; subtitle: string; accent: string; onClick: () => void; disabled?: boolean;
+}) {
+  return (
+    <button className="tb-ctrl-btn" onClick={onClick} disabled={disabled}
+      style={{
+        background: `linear-gradient(160deg,${accent}1c,${accent}0a)`, border: `1px solid ${accent}4a`, opacity: disabled ? 0.5 : 1,
+      }}>
+      <span className="tb-ctrl-icon" style={{ background: `${accent}26`, border: `1px solid ${accent}60`, boxShadow: `inset 0 1px 0 rgba(255,255,255,.15), 0 0 10px ${accent}30` }}>{icon}</span>
+      <span style={{ minWidth: 0, textAlign: "left" }}>
+        <p style={{ margin: 0, fontSize: 11.5, fontWeight: 800, color: accent, letterSpacing: ".05em", textTransform: "uppercase" }}>{title}</p>
+        <p style={{ margin: "2px 0 0", fontSize: 10, color: "rgba(220,220,230,.55)", lineHeight: 1.35 }}>{subtitle}</p>
+      </span>
+    </button>
+  );
+}
+
+// ─── MODAL SHELL — glass effect + gold fantasy border, matching the X 8x8
+// Battle Guide / Game Rules modals ──────────────────────────────────────────
+function TbModal({ title, subtitle, icon, onClose, children }: {
+  title: string; subtitle?: string; icon: string; onClose: () => void; children: React.ReactNode;
+}) {
+  return (
+    <div className="tb-modal-backdrop" onClick={onClose}>
+      <div className="tb-modal-card" onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 24, color: GOLD, fontFamily: "'Cinzel',Georgia,serif" }}>{icon} {title}</h2>
+            {subtitle && <p style={{ margin: "5px 0 0", fontSize: 10, color: "rgba(255,255,255,.5)", letterSpacing: ".1em", textTransform: "uppercase" }}>{subtitle}</p>}
+          </div>
+          <button onClick={onClose} className="tb-modal-close">✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 // ─── THREAT ANALYSIS (read-only UI guidance — no game-rule changes) ─────────
 function computeReachSet(state: TriGameState8, excludeColor: TriColor): Set<string> {
@@ -124,46 +243,16 @@ function computeReachSet(state: TriGameState8, excludeColor: TriColor): Set<stri
   return reach;
 }
 
-function CapturedTray({ pieces }: { pieces: Piece[] }) {
-  if (pieces.length === 0) return null;
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
-      {pieces.slice(0, 6).map((p, i) => (
-        <img key={i} src={pieceImgSrc(p)} alt={`${p.color} ${p.type}`} style={{ width: 16, height: 16, objectFit: "contain", filter: pieceFilter(p) ?? "drop-shadow(0 1px 3px rgba(0,0,0,.8))" }} />
-      ))}
-      {pieces.length > 6 && <span style={{ fontSize: 10, color: "rgba(255,255,255,.5)", alignSelf: "center" }}>+{pieces.length - 6}</span>}
-    </div>
-  );
-}
-
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="tb-panel">
-      <h3 className="tb-panel-title">{title}</h3>
-      {children}
-    </div>
-  );
-}
-
 // ─── LAYOUT GEOMETRY ─────────────────────────────────────────────────────────
-// Every board and wire below is placed with explicit pixel math so the three
-// kingdom boards touch the triangle's three true vertices exactly — nothing
-// here relies on flexbox auto-centering guessing where things line up.
-//
-// The gold frame around the battlefield is drawn as a single SVG polygon
-// inflated by one full cell (`triMargin`) beyond the raw apex/base math.
-// The stepped cell grid's outermost corners (e.g. the top corners of the
-// base row) mathematically overshoot a triangle drawn tight to the true
-// vertices by up to ~0.44 cells — inflating by a full cell guarantees the
-// frame always encloses the whole staircase with margin to spare, so the
-// border reads as one clean, unbroken, symmetric triangle on every side.
+// Same technique as Tri 12x12: kingdom boards touch the triangle's true
+// vertices via explicit pixel math, and the gold frame is an SVG polygon
+// inflated by one full cell beyond the raw apex/base coordinates so it
+// always encloses the stepped cell grid — identical here, just parametric on
+// KINGDOM_SIZE/TRI_COLS which are both smaller for the 8x8 board.
 const FRAME = 14;
 const TITLE_H = 26;
 const WIRE_GAP = 20;
 const LABEL_GUTTER = 18;
-// Desktop side-panel/grid constants — kept here so the JS sizing calc and the
-// CSS grid template always agree on exactly how much room the side panels
-// take, which is what keeps the battlefield truly centered.
 const SIDE_COL_W = 224;
 const GRID_GAP = 18;
 const ROOT_PAD = 24;
@@ -171,7 +260,7 @@ const CONTENT_MAX_W = 1600;
 const COL_LABEL_H = 20;
 
 function buildLayout(triSqPx: number, kingdomSqPx: number) {
-  const kingdomBoardPx = kingdomSqPx * 8 + FRAME * 2;
+  const kingdomBoardPx = kingdomSqPx * KINGDOM_SIZE + FRAME * 2;
   const triWidth = TRI_COLS * triSqPx;
   const triHeight = TRI_ROWS * triSqPx;
   const triMargin = triSqPx;
@@ -201,6 +290,11 @@ function buildLayout(triSqPx: number, kingdomSqPx: number) {
   };
 }
 
+// The 8x8 kingdoms + 15-wide triangle need less room than the 12x12 board
+// before the precise vertex-touching desktop cluster makes sense, so the
+// desktop tier kicks in earlier (1100px vs 12x12's 1300px) — below that, the
+// independently-sized stacked layout (which always fits by construction)
+// takes over instead of trying to cram the cluster into a narrower column.
 type LayoutTier = "desktop" | "tablet" | "mobile";
 
 function tierFor(vw: number): LayoutTier {
@@ -224,9 +318,12 @@ export default function TriBoard8x8({
 }) {
   const [gs, setGs] = useState<TriGameState8>(createInitialTriGameState8());
   const [animSq, setAnimSq] = useState<TriSquare | null>(null);
-  const [triSqPx, setTriSqPx] = useState(32);
-  const [kingdomSqPxState, setKingdomSqPxState] = useState(27);
+  const [triSqPx, setTriSqPx] = useState(30);
+  const [kingdomSqPxState, setKingdomSqPxState] = useState(26);
   const [tier, setTier] = useState<LayoutTier>("desktop");
+  const [showTriRules, setShowTriRules] = useState(false);
+  const [showPieceAbilities, setShowPieceAbilities] = useState(false);
+  const [showGameFlow, setShowGameFlow] = useState(false);
   const gsRef = useRef(gs);
 
   useEffect(() => {
@@ -241,40 +338,25 @@ export default function TriBoard8x8({
       setTier(t);
 
       if (t === "desktop") {
-        // Wide screens: the classic vertex-touching cluster, kingdom boards
-        // sized relative to the triangle so everything meets at true corners.
-        // availW is computed from the ACTUAL side-column/gap/padding budget
-        // (not a guessed constant) so the center column never has to claim
-        // more room than the grid actually has — that mismatch was what let
-        // the battlefield overflow into the rules panel on wide screens.
         const containerW = Math.min(vw, CONTENT_MAX_W) - ROOT_PAD * 2;
         const availW = containerW - SIDE_COL_W * 2 - GRID_GAP * 2;
         const availH = vh - 300;
-        // clusterWidth is dominated by (kingdomBoardPx + triWidth/2), not by
-        // the triangle's own frame width — kingdomBoardPx ≈ 8*(0.85s)+FRAME*2
-        // and triWidth/2 = 7.5s, so clusterWidth ≈ 2*((6.8s+FRAME*2)+7.5s+8)
-        // = 28.6s + 2*FRAME*2 + 16. Inverting that (rather than the smaller
-        // triFrameW-based estimate previously used here) is what keeps the
-        // battlefield from overflowing past its column on wide desktops. A
-        // small safety buffer covers the rounding in kingdomSqPx below.
-        const SAFETY = 32;
-        const fromWidth = Math.floor((availW - FRAME * 4 - 16 - SAFETY) / 28.6);
+        const SIZE_FACTOR = 2 * (KINGDOM_SIZE * 0.85 + TRI_COLS / 2);
+        const SAFETY = 24;
+        const fromWidth = Math.floor((availW - FRAME * 4 - 16 - SAFETY) / SIZE_FACTOR);
         const fromHeight = Math.floor((availH - FRAME * 2 - COL_LABEL_H) / (TRI_ROWS + 1));
-        const s = Math.max(16, Math.min(fromWidth, fromHeight, 40));
+        const s = Math.max(18, Math.min(fromWidth, fromHeight, 34));
         setTriSqPx(s);
-        setKingdomSqPxState(Math.max(16, Math.round(s * 0.85)));
+        setKingdomSqPxState(Math.max(18, Math.round(s * 0.85)));
       } else {
-        // Tablet/mobile: kingdom boards and the tri gate are sized
-        // independently against the full available width so nothing ever
-        // has to exceed the viewport (no horizontal scroll).
         const pagePad = t === "mobile" ? 24 : 40;
         const availW = vw - pagePad;
-        const maxTri = t === "mobile" ? 22 : 28;
-        const maxKingdom = t === "mobile" ? 22 : 30;
+        const maxTri = t === "mobile" ? 20 : 26;
+        const maxKingdom = t === "mobile" ? 20 : 26;
         const triFromW = Math.floor((availW - FRAME * 2 - LABEL_GUTTER * 2 - 2 * 22) / (TRI_COLS + 2));
-        const kingdomFromW = Math.floor((availW / 2 - 16 - FRAME * 2) / 8);
-        setTriSqPx(Math.max(14, Math.min(triFromW, maxTri)));
-        setKingdomSqPxState(Math.max(14, Math.min(kingdomFromW, maxKingdom)));
+        const kingdomFromW = Math.floor((availW / 2 - 16 - FRAME * 2) / KINGDOM_SIZE);
+        setTriSqPx(Math.max(12, Math.min(triFromW, maxTri)));
+        setKingdomSqPxState(Math.max(12, Math.min(kingdomFromW, maxKingdom)));
       }
     };
     calc();
@@ -286,11 +368,16 @@ export default function TriBoard8x8({
   const isCompact = tier !== "desktop";
   const layout = buildLayout(triSqPx, kingdomSqPx);
 
+  const [elimPopup, setElimPopup] = useState<TriColor | null>(null);
+
   useEffect(() => {
     const onMove = ({ newState }: { newState: TriGameState8 }) => {
       if (newState.lastMove) {
         setAnimSq(newState.lastMove.to);
         setTimeout(() => setAnimSq(null), 420);
+      }
+      if (newState.eliminatedPlayers.length > gsRef.current.eliminatedPlayers.length && newState.justEliminated) {
+        setTimeout(() => setElimPopup(newState.justEliminated), 350);
       }
       setGs(newState);
     };
@@ -306,6 +393,9 @@ export default function TriBoard8x8({
 
   const isMyTurn = gs.currentTurn === myColor;
   const enemyReach = useMemo(() => computeReachSet(gs, myColor), [gs, myColor]);
+  const selPiece = gs.selectedSquare ? gs.boards[gs.selectedSquare.boardId][gs.selectedSquare.row][gs.selectedSquare.col] : null;
+  const selectedIsPaladin = selPiece?.type === "paladin" && selPiece.color === myColor;
+  const paladinSuperUsed = selPiece?.paladanSuperUsed ?? false;
 
   const selectOrMove = (sq: TriSquare) => {
     if (gs.status !== "playing") return;
@@ -313,7 +403,17 @@ export default function TriBoard8x8({
 
     if (gs.selectedSquare) {
       const isValid = gs.validMoves.some((m) => triSquareEquals(m, sq));
-      const isSuper = gs.superMoves.some((m) => triSquareEquals(m, sq));
+      const isSuper = gs.superMoveMode && gs.superMoves.some((m) => triSquareEquals(m, sq));
+      const isCastle = gs.castleMoves.some((m) => triSquareEquals(m, sq));
+
+      if (isCastle) {
+        const next = executeCastleTri8(gs, gs.selectedSquare, sq);
+        setAnimSq(sq);
+        setTimeout(() => setAnimSq(null), 420);
+        setGs(next);
+        socket.emit("game:move", { roomId, from: gs.selectedSquare, to: sq, newState: next });
+        return;
+      }
 
       if (isValid || isSuper) {
         const next = executeMoveTri8(gs, gs.selectedSquare, sq, isSuper);
@@ -326,16 +426,31 @@ export default function TriBoard8x8({
     }
 
     if (!piece || piece.color !== myColor || !isMyTurn) {
-      setGs((prev) => ({ ...prev, selectedSquare: null, validMoves: [], superMoves: [], superMoveMode: false }));
+      setGs((prev) => ({ ...prev, selectedSquare: null, validMoves: [], superMoves: [], superMoveMode: false, castleMoves: [] }));
       return;
     }
 
+    const isPal = piece.type === "paladin";
     setGs((prev) => ({
       ...prev,
       selectedSquare: sq,
       validMoves: getLegalMovesTri8(gs, sq),
-      superMoves: getLegalSuperMovesTri8(gs, sq),
+      castleMoves: isPal ? getLegalCastleMovesTri8(gs, sq) : [],
+      superMoves: [],
       superMoveMode: false,
+    }));
+  };
+
+  const handleSuperAttack = () => {
+    if (!isMyTurn || !gs.selectedSquare) return;
+    const piece = gs.boards[gs.selectedSquare.boardId][gs.selectedSquare.row][gs.selectedSquare.col];
+    if (!piece || piece.type !== "paladin" || piece.paladanSuperUsed) return;
+    setGs((prev) => ({
+      ...prev,
+      superMoves: getLegalSuperMovesTri8(gs, gs.selectedSquare!),
+      superMoveMode: true,
+      validMoves: [],
+      castleMoves: [],
     }));
   };
 
@@ -392,14 +507,7 @@ export default function TriBoard8x8({
     };
   }, [socket]);
 
-  // ── Passive disconnect handling ────────────────────────────────────────
-  // The server already broadcasts "room:updated" whenever a player drops out
-  // of the room (kingdome-server/index.ts's disconnect handler). If a color
-  // we know about is no longer present and isn't already eliminated, the
-  // lexicographically-first remaining, non-eliminated color acts as the sole
-  // "authority" client and force-eliminates the departed color — this keeps
-  // every client's game state converging on the same result instead of
-  // racing multiple duplicate broadcasts.
+  // ── Passive disconnect handling (same authority-election pattern as Tri 12x12) ──
   useEffect(() => {
     const onRoomUpdated = (room: { players?: { color: string }[] }) => {
       const current = gsRef.current;
@@ -440,6 +548,7 @@ export default function TriBoard8x8({
     const isSel = !!gs.selectedSquare && triSquareEquals(gs.selectedSquare, sq);
     const isValid = gs.validMoves.some((m) => triSquareEquals(m, sq));
     const isSuper = gs.superMoves.some((m) => triSquareEquals(m, sq));
+    const isCastle = gs.castleMoves.some((m) => triSquareEquals(m, sq));
     const isLF = !!gs.lastMove && triSquareEquals(gs.lastMove.from, sq);
     const isLT = !!gs.lastMove && triSquareEquals(gs.lastMove.to, sq);
     const isAnim = !!animSq && triSquareEquals(animSq, sq);
@@ -452,12 +561,6 @@ export default function TriBoard8x8({
     const reachKey = `${boardId}|${r}|${c}`;
     const isDanger = !!piece && piece.color === myColor && enemyReach.has(reachKey);
     const isRiskyMove = isValid && isMyTurn && enemyReach.has(reachKey);
-
-    // ── Guidance color semantics ──────────────────────────────────────────
-    // Blue = selected piece · Green = recommended/safe move · Gold = special
-    // connector/gate-crossing or super-move path · Red = danger zone / risky move.
-    const SAFE = "#3ecf6e";
-    const SELECT = "#4aa8ff";
 
     const baseBg = variant === "triangle" ? (isLight ? triLight : triDark) : isLight ? kingdomLight : kingdomDark;
     let ov = "";
@@ -497,11 +600,16 @@ export default function TriBoard8x8({
         {isRiskyMove && (
           <div style={{ position: "absolute", top: -1, right: -1, width: 0, height: 0, borderStyle: "solid", borderWidth: "0 12px 12px 0", borderColor: `transparent ${DANGER} transparent transparent`, opacity: 0.9, zIndex: 5, pointerEvents: "none" }} />
         )}
+
         {isSuper && !piece && (
-          <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: size * 0.35, height: size * 0.35, borderRadius: "50%", background: "rgba(255,140,0,.82)", boxShadow: "0 0 20px rgba(255,140,0,.7)", animation: "tdotPop .15s ease both", pointerEvents: "none", zIndex: 4 }} />
+          <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: size * 0.35, height: size * 0.35, borderRadius: "50%", background: SUPER, boxShadow: `0 0 20px ${SUPER}`, animation: "tdotPop .15s ease both", pointerEvents: "none", zIndex: 4 }} />
         )}
         {isSuper && piece && (
-          <div style={{ position: "absolute", top: 3, left: 3, right: 3, bottom: 3, zIndex: 4, borderRadius: 5, boxSizing: "border-box", border: "3px solid rgba(255,140,0,.95)", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", top: 3, left: 3, right: 3, bottom: 3, zIndex: 4, borderRadius: 5, boxSizing: "border-box", border: `3px solid ${SUPER}`, pointerEvents: "none" }} />
+        )}
+
+        {isCastle && piece && (
+          <div style={{ position: "absolute", top: 3, left: 3, right: 3, bottom: 3, zIndex: 4, borderRadius: 5, boxSizing: "border-box", border: `2px dashed ${SELECT}` , pointerEvents: "none" }} />
         )}
 
         {piece && (
@@ -510,7 +618,8 @@ export default function TriBoard8x8({
               src={pieceImgSrc(piece)}
               alt={`${piece.color} ${piece.type}`}
               className="tcpi"
-              style={{ filter: pieceFilter(piece), animation: isAnim ? (gs.superMoveMode ? "tsuperIn .4s cubic-bezier(.18,1,.32,1) both" : "tpieceIn .32s cubic-bezier(.22,1,.36,1) both") : "none" }}
+              style={{ animation: isAnim ? (gs.superMoveMode ? "tsuperIn .4s cubic-bezier(.18,1,.32,1) both" : "tpieceIn .32s cubic-bezier(.22,1,.36,1) both") : "none" }}
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden"; }}
             />
             {piece.type === "paladin" && piece.paladanSuperUsed && <div className="tsup-badge">✗</div>}
           </>
@@ -520,7 +629,7 @@ export default function TriBoard8x8({
   };
 
   const renderKingdomBoard = (boardId: TriBoardId, title: string, subtitle: string, width: number) => {
-    const boardPx = kingdomSqPx * 8;
+    const boardPx = kingdomSqPx * KINGDOM_SIZE;
     const isActiveBoard = BOARD_COLOR[boardId] === gs.currentTurn;
 
     return (
@@ -536,11 +645,11 @@ export default function TriBoard8x8({
           <div
             style={{
               position: "absolute", top: FRAME, left: FRAME, width: boardPx, height: boardPx,
-              display: "grid", gridTemplateColumns: `repeat(8,${kingdomSqPx}px)`, gridTemplateRows: `repeat(8,${kingdomSqPx}px)`,
+              display: "grid", gridTemplateColumns: `repeat(${KINGDOM_SIZE},${kingdomSqPx}px)`, gridTemplateRows: `repeat(${KINGDOM_SIZE},${kingdomSqPx}px)`,
               borderRadius: 4, overflow: "hidden", border: "1px solid rgba(0,0,0,.9)", boxShadow: "inset 0 0 24px rgba(0,0,0,.5)",
             }}
           >
-            {Array.from({ length: 8 }).map((_, r) => Array.from({ length: 8 }).map((_, c) => renderCell(boardId, r, c, kingdomSqPx, "kingdom")))}
+            {Array.from({ length: KINGDOM_SIZE }).map((_, r) => Array.from({ length: KINGDOM_SIZE }).map((_, c) => renderCell(boardId, r, c, kingdomSqPx, "kingdom")))}
           </div>
         </div>
       </div>
@@ -550,11 +659,6 @@ export default function TriBoard8x8({
   const { triWidth, triHeight, triMargin, triFrameW, triFrameH } = layout;
 
   const renderTriGate = () => {
-    // SVG box is inflated by `triMargin` (one full cell) beyond the raw
-    // apex/base coordinates on every side — see the comment on buildLayout.
-    // Because both slanted edges are drawn from the same polygon element,
-    // the stroke is mathematically identical in thickness and glow on the
-    // left and right — there is no way for this to render one-sided.
     const svgW = triWidth + triMargin * 2;
     const svgH = triHeight + triMargin;
     const apexXsvg = svgW / 2;
@@ -565,12 +669,12 @@ export default function TriBoard8x8({
       <div className="tb-tri-frame" style={{ width: triFrameW, height: triFrameH }}>
         <svg width={svgW} height={svgH} style={{ position: "absolute", top: FRAME, left: FRAME + LABEL_GUTTER, overflow: "visible", pointerEvents: "none" }}>
           <defs>
-            <linearGradient id="triBacking" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id="triBacking8" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#8a6428" />
               <stop offset="100%" stopColor="#2c1b09" />
             </linearGradient>
           </defs>
-          <polygon points={`${apexXsvg},0 0,${svgH} ${svgW},${svgH}`} fill="url(#triBacking)" />
+          <polygon points={`${apexXsvg},0 0,${svgH} ${svgW},${svgH}`} fill="url(#triBacking8)" />
           <polygon points={`${apexXsvg},0 0,${svgH} ${svgW},${svgH}`} fill="none" stroke="rgba(15,8,2,.95)" strokeWidth={9} strokeLinejoin="round" />
           <polygon points={`${apexXsvg},0 0,${svgH} ${svgW},${svgH}`} fill="none" stroke="rgba(212,168,67,1)" strokeWidth={4} strokeLinejoin="round" className="tb-tri-outline" />
           <polygon points={`${apexXsvg},0 0,${svgH} ${svgW},${svgH}`} fill="none" stroke="rgba(255,224,150,.55)" strokeWidth={1.25} strokeLinejoin="round" />
@@ -591,7 +695,7 @@ export default function TriBoard8x8({
           })}
           <div style={{ display: "flex", marginTop: 6 }}>
             {Array.from({ length: TRI_COLS }).map((_, c) => (
-              <span key={c} className="tb-tri-label" style={{ width: triSqPx, textAlign: "center" }}>{String.fromCharCode(65 + c)}</span>
+              <span key={c} className="tb-tri-label" style={{ width: triSqPx, textAlign: "center", fontSize: 8.5 }}>{String.fromCharCode(65 + (c % 26))}</span>
             ))}
           </div>
         </div>
@@ -623,7 +727,7 @@ export default function TriBoard8x8({
 
         .tb-title{margin:0;font-size:36px;font-family:'Cinzel',Georgia,serif;font-weight:700;letter-spacing:.02em;background:linear-gradient(100deg,#8a5a18,#f0dfb0,#d4a843,#8a5a18);background-size:220% auto;-webkit-background-clip:text;background-clip:text;color:transparent;animation:titleFloat 4.5s ease-in-out infinite,titleShimmer 6s linear infinite,titleGlow 4.5s ease-in-out infinite;display:inline-block;}
 
-        .tb-root{min-height:100vh;overflow-x:hidden;background:radial-gradient(circle at top,#211307,#050301 65%,#000);color:#fff;font-family:'Cinzel',Georgia,serif;padding:110px ${ROOT_PAD}px 40px;}
+        .tb-root{min-height:100vh;overflow-x:hidden;background-image:url('/X-8x8/background.png');background-repeat:no-repeat;background-size:cover;background-position:center top;background-attachment:scroll;color:#fff;font-family:'Cinzel',Georgia,serif;padding:110px ${ROOT_PAD}px 40px;}
         .tb-panel{padding:12px 13px;border-radius:12px;background:rgba(18,12,6,.55);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(212,168,67,.22);box-shadow:0 10px 30px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.04);animation:panelFadeUp .4s ease both;transition:border-color .25s,box-shadow .25s,transform .25s;}
         .tb-panel:hover{border-color:rgba(212,168,67,.4);box-shadow:0 14px 36px rgba(0,0,0,.5),0 0 24px rgba(212,168,67,.08),inset 0 1px 0 rgba(255,255,255,.05);}
         .tb-panel-title{margin:0 0 9px;color:${GOLD};font-family:'Cinzel',Georgia,serif;font-size:13px;font-weight:700;letter-spacing:.04em;}
@@ -644,10 +748,11 @@ export default function TriBoard8x8({
         .tb-pass-btn:not(:disabled):active{transform:translateY(0);}
         .tb-leave-btn{padding:11px 16px;border-radius:12px;border:1px solid rgba(220,80,80,.3);background:rgba(120,30,30,.18);color:rgba(255,160,160,.85);font-weight:700;font-family:'Cinzel',Georgia,serif;font-size:12px;cursor:pointer;transition:all .2s;}
         .tb-leave-btn:hover{background:rgba(150,35,35,.32);border-color:rgba(255,100,100,.5);color:#fff;transform:translateY(-1px);}
-        .tb-turn-toast{position:fixed;top:110px;left:50%;transform:translateX(-50%);z-index:500;padding:14px 26px;border-radius:14px;background:rgba(8,5,2,.9);backdrop-filter:blur(10px);border:1px solid;display:flex;flex-direction:column;align-items:center;gap:2px;animation:toastSlideIn .3s cubic-bezier(.22,1,.36,1) both;pointer-events:none;font-family:'Cinzel',Georgia,serif;}
+        .tb-spell-msg{font-size:11.5px;color:rgba(255,255,255,.75);line-height:1.4;}
+        .tb-turn-toast{position:relative;width:fit-content;max-width:100%;margin:0 auto 18px;padding:14px 26px;border-radius:14px;background:rgba(8,5,2,.9);backdrop-filter:blur(10px);border:1px solid;display:flex;flex-direction:column;align-items:center;gap:2px;animation:toastSlideIn .3s cubic-bezier(.22,1,.36,1) both;pointer-events:none;font-family:'Cinzel',Georgia,serif;box-sizing:border-box;}
         .tb-turn-toast span:first-child{font-weight:900;font-size:16px;letter-spacing:.08em;text-transform:uppercase;}
         .tb-turn-toast-sub{font-size:11px;color:rgba(255,255,255,.55);}
-        .tb-move-summary{position:absolute;top:-6px;left:50%;transform:translate(-50%,-100%);z-index:60;display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:90%;pointer-events:none;}
+        .tb-move-summary{position:relative;width:100%;box-sizing:border-box;margin:0 0 14px;display:flex;gap:6px;flex-wrap:wrap;justify-content:center;pointer-events:none;}
         .tb-ms-chip{padding:5px 10px;border-radius:999px;font-size:10.5px;font-weight:700;letter-spacing:.02em;white-space:nowrap;animation:chipPop .18s ease both;border:1px solid;backdrop-filter:blur(6px);}
         .tb-ms-safe{background:rgba(62,207,110,.14);border-color:rgba(62,207,110,.45);color:#8be6a8;}
         .tb-ms-danger{background:rgba(255,80,80,.14);border-color:rgba(255,80,80,.45);color:#ff9a9a;}
@@ -662,8 +767,26 @@ export default function TriBoard8x8({
         }
         @media (max-width:760px){
           .tb-root{padding:96px 12px 32px;}
-          .tb-turn-toast{top:88px;padding:11px 18px;}
+          .tb-turn-toast{padding:11px 18px;margin-bottom:14px;}
         }
+        .tb-ability-chip{display:flex;align-items:center;gap:5px;padding:3px 6px;border-radius:8px;background:rgba(255,255,255,.04);font-size:10px;color:rgba(255,255,255,.7);cursor:help;}
+        .tb-ctrl-btn{display:flex;align-items:flex-start;gap:11px;width:100%;text-align:left;padding:12px 13px;border-radius:13px;cursor:pointer;font-family:'Cinzel',Georgia,serif;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 6px 16px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.06);transition:transform .18s ease,box-shadow .18s ease;}
+        .tb-ctrl-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 24px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.12);}
+        .tb-ctrl-btn:active:not(:disabled){transform:translateY(0) scale(.98);}
+        .tb-ctrl-btn:disabled{cursor:default;}
+        .tb-ctrl-icon{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;font-size:15px;flex-shrink:0;}
+        .tb-modal-backdrop{position:fixed;inset:0;z-index:960;background:rgba(0,0,0,.88);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:center;padding:20px;animation:panelFadeUp .25s ease both;}
+        .tb-modal-card{width:min(820px,94vw);max-height:88vh;overflow-y:auto;border-radius:24px;padding:28px 26px;background:linear-gradient(155deg,#0e0902 0%,#1a1005 45%,#0e0902 100%);border:1px solid rgba(212,168,67,.28);box-shadow:0 40px 100px rgba(0,0,0,.85),0 0 60px rgba(212,168,67,.08),inset 0 1px 0 rgba(255,255,255,.05);font-family:'Cinzel',Georgia,serif;}
+        .tb-modal-close{width:38px;height:38px;border-radius:11px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:rgba(255,255,255,.55);cursor:pointer;font-size:16px;flex-shrink:0;transition:background .15s,color .15s;}
+        .tb-modal-close:hover{background:rgba(255,255,255,.1);color:#fff;}
+        .tb-modal-scroll::-webkit-scrollbar,.tb-modal-card::-webkit-scrollbar{width:5px;}
+        .tb-modal-scroll::-webkit-scrollbar-thumb,.tb-modal-card::-webkit-scrollbar-thumb{background:rgba(212,168,67,.25);border-radius:5px;}
+        .tb-rule-card{display:flex;gap:11px;padding:13px 14px;border-radius:14px;background:rgba(255,255,255,.03);border:1px solid rgba(212,168,67,.12);transition:border-color .2s,background .2s;}
+        .tb-rule-card:hover{background:rgba(212,168,67,.05);border-color:rgba(212,168,67,.28);}
+        .tb-rule-num{width:22px;height:22px;border-radius:50%;background:rgba(212,168,67,.14);border:1px solid rgba(212,168,67,.4);color:${GOLD};font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+        .tb-piece-card{padding:20px 20px;border-radius:18px;background:linear-gradient(145deg,rgba(255,255,255,.07),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.12);box-shadow:0 8px 18px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.06);transition:transform .18s,border-color .18s,box-shadow .18s,background .18s;}
+        .tb-piece-card:hover{transform:translateY(-3px) scale(1.01);border-color:rgba(212,168,67,.55);background:linear-gradient(145deg,rgba(212,168,67,.16),rgba(255,255,255,.03));box-shadow:0 16px 32px rgba(0,0,0,.55),0 0 20px rgba(212,168,67,.22),inset 0 1px 0 rgba(255,255,255,.1);}
+        .tb-piece-icon{display:flex;align-items:center;justify-content:center;width:60px;height:60px;border-radius:16px;background:#050505;border:1px solid rgba(255,255,255,.14);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 8px 16px rgba(0,0,0,.6);flex-shrink:0;overflow:hidden;font-size:26px;}
         .tcsq{position:relative;overflow:hidden;cursor:pointer;transition:filter .1s;}
         .tcsq:hover{filter:brightness(1.2);}
         .tcsq:hover .tcpi{transform:translate(-50%,-50%) scale(1.07) translateY(-2px);}
@@ -671,18 +794,11 @@ export default function TriBoard8x8({
         .tsup-badge{position:absolute;bottom:2px;right:2px;width:11px;height:11px;border-radius:50%;background:rgba(180,50,50,.85);border:1px solid rgba(255,100,100,.5);display:flex;align-items:center;justify-content:center;font-size:6px;color:#fff;font-weight:700;z-index:5;pointer-events:none;}
       `}</style>
 
-      {turnToast && (
-        <div className="tb-turn-toast" style={{ borderColor: `${AC[myColor]}77`, boxShadow: `0 0 40px ${AC[myColor]}44, 0 10px 30px rgba(0,0,0,.6)` }}>
-          <span style={{ color: AC[myColor] }}>Your Turn</span>
-          <span className="tb-turn-toast-sub">Select a piece to see your moves</span>
-        </div>
-      )}
-
       <div style={{ maxWidth: CONTENT_MAX_W, margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
           <div>
             <h1 className="tb-title">
-              Basic Tri Board 8x8
+              Tri Board 8x8
             </h1>
             <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,.55)" }}>Room: {roomId} · You are {myColor}</p>
           </div>
@@ -690,6 +806,13 @@ export default function TriBoard8x8({
             {isMyTurn ? "Your Turn" : `${gs.currentTurn}'s Turn`}
           </div>
         </div>
+
+        {turnToast && (
+          <div className="tb-turn-toast" style={{ borderColor: `${AC[myColor]}77`, boxShadow: `0 0 40px ${AC[myColor]}44, 0 10px 30px rgba(0,0,0,.6)` }}>
+            <span style={{ color: AC[myColor] }}>Your Turn</span>
+            <span className="tb-turn-toast-sub">Select a piece to see your moves</span>
+          </div>
+        )}
 
         <div className="tb-layout-grid">
           {/* ── LEFT: PLAYERS + LEGEND ── */}
@@ -729,34 +852,17 @@ export default function TriBoard8x8({
                 ))}
               </div>
             </Panel>
-
-            <button
-              className="tb-pass-btn"
-              onClick={handlePass}
-              disabled={!isMyTurn || gs.passUsed[myColor]}
-              style={{
-                background: isMyTurn && !gs.passUsed[myColor] ? "linear-gradient(135deg,#d4a843,#8a5a18)" : "rgba(255,255,255,.06)",
-                color: isMyTurn && !gs.passUsed[myColor] ? "#120800" : "rgba(255,255,255,.25)",
-                cursor: isMyTurn && !gs.passUsed[myColor] ? "pointer" : "not-allowed",
-              }}
-            >
-              Pass Turn
-            </button>
-
-            <button className="tb-leave-btn" onClick={() => setShowLeaveConfirm(true)}>
-              Leave / Surrender
-            </button>
           </div>
 
           {/* ── CENTER: battlefield ── */}
-          <div className="tb-col-center" style={{ display: "flex", justifyContent: "center", position: "relative" }}>
+          <div className="tb-col-center" style={{ display: "flex", flexDirection: "column", alignItems: "center", position: "relative" }}>
             {moveSummary && (
               <div className="tb-move-summary">
                 {moveSummary.captures > 0 && <span className="tb-ms-chip tb-ms-gold">⚔ {moveSummary.captures} capture{moveSummary.captures > 1 ? "s" : ""}</span>}
                 {moveSummary.safe > 0 && <span className="tb-ms-chip tb-ms-safe">✓ {moveSummary.safe} safe</span>}
                 {moveSummary.risky > 0 && <span className="tb-ms-chip tb-ms-danger">⚠ {moveSummary.risky} risky</span>}
                 {moveSummary.crossing > 0 && <span className="tb-ms-chip tb-ms-gold">↙ {moveSummary.crossing} gate crossing</span>}
-                {moveSummary.superCount > 0 && <span className="tb-ms-chip tb-ms-gold">✦ {moveSummary.superCount} special</span>}
+                {moveSummary.superCount > 0 && <span className="tb-ms-chip tb-ms-gold">✦ {moveSummary.superCount} super strike</span>}
               </div>
             )}
             {isCompact ? (
@@ -806,44 +912,101 @@ export default function TriBoard8x8({
             )}
           </div>
 
-          {/* ── RIGHT: TRI RULES ── */}
-          <div className="tb-col-right">
-            <Panel title="Tri Rules">
-              <div style={{ display: "grid", gap: 8 }}>
-                {RULES.map((r, i) => (
-                  <div key={i} style={{ display: "flex", gap: 7 }}>
-                    <div style={{ width: 16, height: 16, borderRadius: "50%", background: "rgba(212,168,67,.14)", border: "1px solid rgba(212,168,67,.4)", color: GOLD, fontSize: 9.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      {i + 1}
-                    </div>
-                    <div>
-                      <div style={{ color: "#f0dfb0", fontWeight: 700, fontSize: 11.5, marginBottom: 1 }}>{r.title}</div>
-                      <div style={{ color: "rgba(255,255,255,.62)", fontSize: 10.5, lineHeight: 1.4 }}>{r.body}</div>
-                    </div>
-                  </div>
-                ))}
+          {/* ── RIGHT: GAME CONTROLS ── */}
+          <div className="tb-col-right" style={{ display: "grid", gap: 16 }}>
+            <Panel title="Game Controls">
+              <div style={{ display: "grid", gap: 10 }}>
+                {isMyTurn && selectedIsPaladin && (
+                  <ControlCard icon="⚡" accent="#ffb347"
+                    title={paladinSuperUsed ? "Super Used" : "Super Attack"}
+                    subtitle="One-time 2-square strike"
+                    disabled={paladinSuperUsed}
+                    onClick={() => { if (!paladinSuperUsed) handleSuperAttack(); }} />
+                )}
+                <ControlCard icon="⏩" accent="#60a5fa" title="Pass Turn" subtitle="Skip your turn"
+                  disabled={!isMyTurn} onClick={handlePass} />
+                <ControlCard icon="📜" accent="#4ade80" title="Tri Rules" subtitle="How to play and win"
+                  onClick={() => setShowTriRules(true)} />
+                <ControlCard icon="🛡️" accent="#c084fc" title="Piece Abilities" subtitle="Every piece and its powers"
+                  onClick={() => setShowPieceAbilities(true)} />
+                <ControlCard icon="🏆" accent="#ffb347" title="Game Flow / Victory" subtitle="From kingdom to conquest"
+                  onClick={() => setShowGameFlow(true)} />
+                {gs.status === "playing" && !gs.eliminatedPlayers.includes(myColor) && (
+                  <ControlCard icon="🚩" accent="#f87171" title="Quit Game" subtitle="Exit the current match"
+                    onClick={() => setShowLeaveConfirm(true)} />
+                )}
               </div>
             </Panel>
           </div>
         </div>
 
-        {/* ── GAME FLOW ── */}
-        <div style={{ marginTop: 30, borderRadius: 16, background: "rgba(10,7,3,.72)", border: "1px solid rgba(212,168,67,.22)", boxShadow: "0 10px 30px rgba(0,0,0,.4)", overflow: "hidden" }}>
-          <div style={{ textAlign: "center", padding: "10px 0", borderBottom: "1px solid rgba(212,168,67,.18)", color: GOLD, fontWeight: 800, letterSpacing: ".12em", fontSize: 13 }}>GAME FLOW</div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: 14, padding: "20px 24px" }}>
-            {GAME_FLOW.map((step, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, width: 110 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(0,0,0,.5)", border: "1px solid rgba(212,168,67,.35)", display: "flex", alignItems: "center", justifyContent: "center" }}>{step.icon}</div>
-                  <div style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,.7)", lineHeight: 1.35 }}>
-                    <div>{step.lines[0]}</div>
-                    <div>{step.lines[1]}</div>
+        {/* ── TRI RULES MODAL ── */}
+        {showTriRules && (
+          <TbModal title="Tri Board Rules" subtitle="Kingdoms · Tri Gate · Combat" icon="⚔️" onClose={() => setShowTriRules(false)}>
+            <div className="tb-modal-scroll" style={{ maxHeight: "64vh", overflowY: "auto", display: "grid", gap: 10, paddingRight: 4 }}>
+              {RULES.map((r, i) => (
+                <div key={i} className="tb-rule-card">
+                  <div className="tb-rule-num">{i + 1}</div>
+                  <div>
+                    <div style={{ color: "#f0dfb0", fontWeight: 800, fontSize: 13, marginBottom: 3, letterSpacing: ".03em" }}>{r.title}</div>
+                    <div style={{ color: "rgba(255,255,255,.68)", fontSize: 12.5, lineHeight: 1.6 }}>{r.body}</div>
                   </div>
                 </div>
-                {i < GAME_FLOW.length - 1 && <span style={{ color: GOLD, fontSize: 18, opacity: 0.6 }}>→</span>}
-              </div>
-            ))}
-          </div>
-        </div>
+              ))}
+            </div>
+            <div style={{ textAlign: "center", padding: "14px 0 0", borderTop: "1px solid rgba(212,168,67,.12)", marginTop: 14 }}>
+              <p style={{ margin: 0, fontSize: 11, color: "rgba(212,168,67,.4)", fontStyle: "italic" }}>"Three crowns, one Tri Gate — only one kingdom walks away."</p>
+            </div>
+          </TbModal>
+        )}
+
+        {/* ── PIECE ABILITIES MODAL ── */}
+        {showPieceAbilities && (
+          <TbModal title="Piece Abilities" subtitle="Movement · Powers · Combat" icon="🛡️" onClose={() => setShowPieceAbilities(false)}>
+            <div className="tb-modal-scroll" style={{ maxHeight: "68vh", overflowY: "auto", display: "grid", gridTemplateColumns: isCompact ? "1fr" : "1fr 1fr", gap: 14, paddingRight: 4 }}>
+              {(Object.keys(PIECE_INFO) as PieceType[]).map((type) => (
+                <div key={type} className="tb-piece-card">
+                  <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10 }}>
+                    <span className="tb-piece-icon"><PieceAbilityIcon pieceKey={type} /></span>
+                    <p style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#fff", letterSpacing: ".03em", textShadow: "0 2px 8px rgba(0,0,0,.8)" }}>{PIECE_INFO[type].name}</p>
+                  </div>
+                  <p style={{ margin: 0, fontSize: 13.5, color: "rgba(255,255,255,.8)", lineHeight: 1.7 }}>{PIECE_INFO[type].special}</p>
+                </div>
+              ))}
+            </div>
+          </TbModal>
+        )}
+
+        {/* ── GAME FLOW / VICTORY RULES MODAL ── */}
+        {showGameFlow && (
+          <TbModal title="Game Flow & Victory" subtitle="From Kingdom to Conquest" icon="🏆" onClose={() => setShowGameFlow(false)}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: 14, padding: "4px 0 18px" }}>
+              {GAME_FLOW.map((step, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, width: 96 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(0,0,0,.5)", border: "1px solid rgba(212,168,67,.35)", display: "flex", alignItems: "center", justifyContent: "center" }}>{step.icon}</div>
+                    <div style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,.7)", lineHeight: 1.35 }}>
+                      <div>{step.lines[0]}</div>
+                      <div>{step.lines[1]}</div>
+                    </div>
+                  </div>
+                  {i < GAME_FLOW.length - 1 && <span style={{ color: GOLD, fontSize: 18, opacity: 0.6 }}>→</span>}
+                </div>
+              ))}
+            </div>
+            <div className="tb-modal-scroll" style={{ maxHeight: "50vh", overflowY: "auto", display: "grid", gap: 10, paddingRight: 4, borderTop: "1px solid rgba(212,168,67,.12)", paddingTop: 14 }}>
+              {VICTORY_RULES.map((r, i) => (
+                <div key={i} className="tb-rule-card">
+                  <div className="tb-rule-num">{i + 1}</div>
+                  <div>
+                    <div style={{ color: "#f0dfb0", fontWeight: 800, fontSize: 13, marginBottom: 3, letterSpacing: ".03em" }}>{r.title}</div>
+                    <div style={{ color: "rgba(255,255,255,.68)", fontSize: 12.5, lineHeight: 1.6 }}>{r.body}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </TbModal>
+        )}
 
         {showLeaveConfirm && (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 998 }}>
@@ -890,11 +1053,20 @@ export default function TriBoard8x8({
               <p style={{ color: "rgba(255,255,255,.55)", marginTop: 10 }}>
                 {winnerIsMe ? "You claim the tri-kingdom." : `${playerNames[gs.winner] || gs.winner} claims the tri-kingdom. Better luck next time.`}
               </p>
-              <button onClick={() => location.reload()} style={{ marginTop: 20, padding: "12px 26px", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#d4a843,#8a5a18)", color: "#120800", fontWeight: 900, fontFamily: "'Cinzel',Georgia,serif", cursor: "pointer" }}>
-                Play Again
-              </button>
+              <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", marginTop: 20 }}>
+                <button onClick={() => (window.location.href = "/lobby")} style={{ padding: "12px 26px", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#d4a843,#8a5a18)", color: "#120800", fontWeight: 900, fontFamily: "'Cinzel',Georgia,serif", cursor: "pointer" }}>
+                  ← Return to Lobby
+                </button>
+                <button onClick={() => location.reload()} style={{ padding: "12px 26px", borderRadius: 12, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.7)", fontWeight: 700, fontFamily: "'Cinzel',Georgia,serif", cursor: "pointer" }}>
+                  Play Again
+                </button>
+              </div>
             </div>
           </div>
+        )}
+
+        {elimPopup && (
+          <EliminationPopup eliminated={elimPopup} playerNames={playerNames} onClose={() => setElimPopup(null)} />
         )}
       </div>
     </div>

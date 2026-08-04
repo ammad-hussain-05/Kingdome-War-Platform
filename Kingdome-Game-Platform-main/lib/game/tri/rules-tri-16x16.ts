@@ -61,6 +61,16 @@ export interface TriGameState16 {
   capturedBy: Record<TriColor, Piece16[]>;
   selectedSquare: TriSquare | null;
   validMoves: TriSquare[];
+  // Paladin Super Move (one-time 3-square surprise attack) — kept wholly
+  // separate from validMoves so it never appears as a normal move option,
+  // matching the classic 16x16 board's GameState16 and Tri 12x12.
+  superMoves: TriSquare[];
+  superMoveMode: boolean;
+  // Paladin Reverse Castle — squares adjacent to the selected paladin
+  // holding a friendly non-paladin piece it may swap places with. Same
+  // ability as Tri 12x12's Paladin (Classic 16x16 never had this move;
+  // added here so the Tri Paladin carries its full kit).
+  castleMoves: TriSquare[];
   status: "playing" | "finished";
   winner: TriColor | null;
   lastMove: { from: TriSquare; to: TriSquare } | null;
@@ -121,6 +131,8 @@ export function cloneTriGameState16(state: TriGameState16): TriGameState16 {
       grey: [...state.capturedBy.grey],
     },
     validMoves: [...state.validMoves],
+    superMoves: [...state.superMoves],
+    castleMoves: [...state.castleMoves],
     specialData: state.specialData ? { ...state.specialData } : null,
     boundPlayers: [...state.boundPlayers],
     tricksterAliveCount: { ...state.tricksterAliveCount },
@@ -174,8 +186,8 @@ const NAME_WB: Record<PieceType16, [string, string]> = {
   "cavalier": ["Cavalier Prince White", "Cavalier Prince Black"],
   "mage": ["Mage-Princess White", "Mage-Princess Black"],
   "paladin": ["Paladin - White", "Paladin - Black"],
-  "archer": ["Elven Archer White", "Elven Archer Black"],
-  "thief": ["Assassin White", "Assassin black"],
+  "archer": ["Archer White", "Archer Black"],
+  "thief": ["Thief White", "Thief Black"],
 };
 
 const NAME_GREY: Record<PieceType16, string> = {
@@ -183,9 +195,13 @@ const NAME_GREY: Record<PieceType16, string> = {
   "gargoyle": "Gargoyle Gray", "wizard": "Wizard Gray", "sorceress": "Sorceress Gray",
   "executioner": "Executioner Gray", "assassin": "Assassin Gray", "super-knight": "Super Knight Gray",
   "elvin-archer": "Elven Archer Gray", "conjurer": "Conjuror - Silver", "warlock": "Warlock - Silver",
-  "trickster": "Trickster - Silver", "aerobat-assassin": "Aerobat Assassin - Silver",
+  // Grey's Acrobat Assassin asset is spelled "Acrobat" on disk (unlike the
+  // white/black "Aerobat Assassin - White/Black.png" files) — matches the
+  // same on-disk quirk already handled correctly in rules-x16x16.ts.
+  "trickster": "Trickster - Silver", "aerobat-assassin": "Acrobat Assassin - Silver",
   "cavalier": "Cavalier Prince Gray", "mage": "Mage-Princess Gray", "paladin": "Paladin Gray",
-  "archer": "Elven Archer Gray", "thief": "Assassin Gray",
+  // Grey Thief has its own (typo'd-on-disk) file, "Theif-Grey.png".
+  "archer": "Archer Gray", "thief": "Theif-Grey",
 };
 
 export function pieceImagePathTri16(p: Piece16): string {
@@ -252,6 +268,9 @@ export function createInitialTriGameState16(): TriGameState16 {
     capturedBy: { white: [], black: [], grey: [] },
     selectedSquare: null,
     validMoves: [],
+    superMoves: [],
+    superMoveMode: false,
+    castleMoves: [],
     status: "playing",
     winner: null,
     lastMove: null,
@@ -339,12 +358,26 @@ export function getRawMovesTri16(board: Board16, r: number, c: number, boardId: 
       break;
 
     case "dragon":
-    case "gargoyle":
-      m = [...slide(board, r, c, ALL8, boardId, color)];
+      // Base slide + 1-square special attack (claws/fire/tail, like a
+      // Paladin) shared with the Gargoyle, plus the Dragon-exclusive
+      // fly-over-own-pieces strike (L-shape). Matches getRawMoves16's
+      // "dragon" case exactly.
+      m = [...slide(board, r, c, ALL8, boardId, color), ...os(board, r, c, boardId, color)];
       KJ.forEach(([dr, dc]) => {
         const sq = { row: r + dr, col: c + dc };
         if (inBoundsFor(boardId, sq.row, sq.col) && board[sq.row][sq.col] && board[sq.row][sq.col]!.color !== color) m.push(sq);
       });
+      break;
+
+    case "gargoyle":
+      // Wing/Tail Attack (1 square) + Fire Attack (2 squares), any of the 8
+      // directions, every turn — no unlimited slide, no one-time limit.
+      // Matches getRawMoves16's "gargoyle" case exactly.
+      for (const [dr, dc] of ALL8)
+        for (const d of [1, 2]) {
+          const rr = r + dr * d, cc = c + dc * d;
+          if (inBoundsFor(boardId, rr, cc) && board[rr][cc]?.color !== color) m.push({ row: rr, col: cc });
+        }
       break;
 
     case "wizard":
@@ -425,19 +458,64 @@ export function getRawMovesTri16(board: Board16, r: number, c: number, boardId: 
       break;
 
     case "paladin":
+      // Normal move/kill: 1 square any direction, every turn — nothing
+      // more. The 3-square Super Move is a wholly separate, one-time
+      // ability (see getPaladinSuperMovesTri16 below); it is never part of
+      // the piece's regular move list. Matches the classic 16x16 and Tri
+      // 12x12 Paladin rules exactly.
       m = [...os(board, r, c, boardId, color)];
-      if (!p.paladanSuperUsed) {
-        for (const [dr, dc] of ALL8) {
-          for (const d of [2, 3]) {
-            const rr = r + dr * d, cc = c + dc * d;
-            if (inBoundsFor(boardId, rr, cc) && board[rr][cc]?.color !== color) m.push({ row: rr, col: cc });
-          }
-        }
-      }
       break;
   }
 
+  // Only a Wizard or Sorceress may kill a Wizard or Sorceress — every other
+  // piece treats an enemy Wizard/Sorceress square as untouchable. Matches
+  // the post-switch filter in lib/game/rules-16x16.ts's getRawMoves16.
+  if (type !== "wizard" && type !== "sorceress") {
+    m = m.filter(s => {
+      const t = board[s.row][s.col];
+      return !(t && (t.type === "wizard" || t.type === "sorceress"));
+    });
+  }
+
   return dd(m);
+}
+
+// ─── PALADIN SUPER MOVE (one-time 3-square surprise attack) ────────────────
+// Wholly separate from getRawMovesTri16/getLegalMovesTri16 — never merged
+// into the piece's regular move list. Only offered once per Paladin
+// (paladanSuperUsed gates it), and only via its own selection path in the UI.
+// Matches getPaladinSuperMoves16 in lib/game/rules-16x16.ts exactly.
+export function getPaladinSuperMovesTri16(board: Board16, r: number, c: number, boardId: TriBoardId): Square[] {
+  const p = board[r][c];
+  if (!p || p.type !== "paladin" || p.paladanSuperUsed) return [];
+  const m: Square[] = [];
+  for (const [dr, dc] of ALL8) {
+    const rr = r + dr * 3, cc = c + dc * 3;
+    if (inBoundsFor(boardId, rr, cc) && board[rr][cc]?.color !== p.color) m.push({ row: rr, col: cc });
+  }
+  // Same Wizard/Sorceress kill-protection as every other piece.
+  return m.filter(s => {
+    const t = board[s.row][s.col];
+    return !(t && (t.type === "wizard" || t.type === "sorceress"));
+  });
+}
+
+// ─── PALADIN REVERSE CASTLE ──────────────────────────────────────────────────
+// A paladin adjacent to a friendly non-paladin piece may swap places with it
+// (in any of the 8 directions). Classic 16x16 doesn't have this move; added
+// here so the Tri Paladin carries its full kit (Normal move + Super Move +
+// Reverse Castle), matching Tri 12x12's getCastleMovesTri12 exactly.
+export function getCastleMovesTri16(board: Board16, r: number, c: number, boardId: TriBoardId): Square[] {
+  const piece = board[r][c];
+  if (!piece || piece.type !== "paladin") return [];
+  const moves: Square[] = [];
+  for (const [dr, dc] of ALL8) {
+    const rr = r + dr, cc = c + dc;
+    if (!inBoundsFor(boardId, rr, cc)) continue;
+    const ally = board[rr][cc];
+    if (ally && ally.color === piece.color && ally.type !== "paladin") moves.push({ row: rr, col: cc });
+  }
+  return moves;
 }
 
 // ─── CHECK DETECTION ─────────────────────────────────────────────────────────
@@ -465,6 +543,7 @@ export function isKingInCheckTri16(boards: Record<TriBoardId, Board16>, color: T
       const p = board[r][c];
       if (p && p.color !== color && turnOrder.includes(p.color)) {
         if (getRawMovesTri16(board, r, c, k.boardId).some(m => m.row === k.row && m.col === k.col)) return true;
+        if (p.type === "paladin" && getPaladinSuperMovesTri16(board, r, c, k.boardId).some(m => m.row === k.row && m.col === k.col)) return true;
       }
     }
   }
@@ -546,6 +625,33 @@ export function getLegalMovesTri16(state: TriGameState16, from: TriSquare): TriS
     const simulated = simulateMoveTri16(state.boards, from, to);
     return !isKingInCheckTri16(simulated, piece.color, state.turnOrder);
   });
+}
+
+export function getLegalPaladinSuperMovesTri16(state: TriGameState16, from: TriSquare): TriSquare[] {
+  const board = state.boards[from.boardId];
+  const piece = board[from.row][from.col];
+  if (!piece || piece.color !== state.currentTurn) return [];
+
+  const raw = getPaladinSuperMovesTri16(board, from.row, from.col, from.boardId).map(m => ({
+    boardId: from.boardId, row: m.row, col: m.col,
+  }));
+
+  return raw.filter(to => {
+    const simulated = simulateMoveTri16(state.boards, from, to);
+    return !isKingInCheckTri16(simulated, piece.color, state.turnOrder);
+  });
+}
+
+// Thin ownership/boardId wrapper only — no king-safety filter, matching
+// Tri 12x12's getLegalCastleMovesTri12.
+export function getLegalCastleMovesTri16(state: TriGameState16, from: TriSquare): TriSquare[] {
+  const board = state.boards[from.boardId];
+  const piece = board[from.row][from.col];
+  if (!piece || piece.color !== state.currentTurn) return [];
+
+  return getCastleMovesTri16(board, from.row, from.col, from.boardId).map(m => ({
+    boardId: from.boardId, row: m.row, col: m.col,
+  }));
 }
 
 // ─── FIND PIECES ─────────────────────────────────────────────────────────────
@@ -634,32 +740,33 @@ export function applyConjurerReviveTri16(
   return nb;
 }
 
-// Warlock: binds every enemy piece on the warlock's OWN board for 1 round
-// (same-board-only, unlike the classic 2-player version which binds the
-// entire single board — here that's the natural equivalent since a kingdom
-// board only ever holds its own kingdom's pieces; binding only matters once
-// pieces have crossed onto the shared Tri Gate).
+// Warlock: binds every enemy piece across the ENTIRE Tri battlefield (all
+// three kingdoms plus the Tri Gate) for 1 round — matches the classic
+// 2-player version binding the entire (single) board, scaled up to the
+// Tri board's three connected battlefields.
 export function applyWarlockBindTri16(state: TriGameState16, warlockSq: TriSquare): TriGameState16 {
   const ns = cloneTriGameState16(state);
-  const board = ns.boards[warlockSq.boardId];
-  const warlock = board[warlockSq.row][warlockSq.col];
+  const warlock = ns.boards[warlockSq.boardId][warlockSq.row][warlockSq.col];
   if (!warlock) return ns;
 
   const boundColors = new Set<TriColor>();
-  for (let r = 0; r < board.length; r++) {
-    for (let c = 0; c < board[r].length; c++) {
-      const p = board[r][c];
-      if (p && p.color !== warlock.color) {
-        board[r][c] = { ...p, boundRoundsLeft: 1 };
-        boundColors.add(p.color);
+  for (const boardId of ALL_BOARD_IDS) {
+    const board = ns.boards[boardId];
+    for (let r = 0; r < board.length; r++) {
+      for (let c = 0; c < board[r].length; c++) {
+        const p = board[r][c];
+        if (p && p.color !== warlock.color) {
+          board[r][c] = { ...p, boundRoundsLeft: 1 };
+          boundColors.add(p.color);
+        }
       }
     }
   }
-  board[warlockSq.row][warlockSq.col] = { ...warlock, warlockBindUsed: true };
+  ns.boards[warlockSq.boardId][warlockSq.row][warlockSq.col] = { ...warlock, warlockBindUsed: true };
   for (const c of boundColors) if (!ns.boundPlayers.includes(c)) ns.boundPlayers.push(c);
   ns.spellMessage = boundColors.size > 0
-    ? `⛓️ Warlock bound enemy pieces on this board for 1 round!`
-    : `⛓️ No enemies present on this board to bind.`;
+    ? `⛓️ Warlock bound every enemy piece across the battlefield for 1 round!`
+    : `⛓️ No enemies present on the battlefield to bind.`;
   return ns;
 }
 
@@ -828,7 +935,13 @@ export function advanceTurnTri16(state: TriGameState16): TriGameState16 {
   const ns = cloneTriGameState16(state);
   ns.specialMode = null; ns.specialData = null; ns.spellMessage = null;
   ns.pendingAxeSquare = null; ns.selectedSquare = null; ns.validMoves = [];
+  ns.superMoves = []; ns.superMoveMode = false; ns.castleMoves = [];
   ns.justEliminated = null;
+  // A resolved (or abandoned) Wish dice roll must never survive a turn
+  // transition — otherwise the click handler's "a dice roll is awaiting
+  // Confirm/End Turn" guard blocks the board forever for both players.
+  // Matches lib/game/rules-16x16.ts's advanceTurn16 exactly.
+  ns.wishDiceResult = null;
 
   // Trickster 10-turn timeout — in the classic 2-player game this ends the
   // game outright; here it just eliminates that specific color (piece wipe)
@@ -938,6 +1051,7 @@ export function executeMoveTri16(state: TriGameState16, from: TriSquare, to: Tri
 
   ns.lastMove = { from, to };
   ns.selectedSquare = null; ns.validMoves = [];
+  ns.superMoves = []; ns.superMoveMode = false; ns.castleMoves = [];
   ns.specialMode = null; ns.specialData = null; ns.spellMessage = null; ns.wishDiceResult = null;
 
   const remainingPlayers = getRemainingPlayersTri16(ns.boards, ns.turnOrder);
@@ -973,6 +1087,30 @@ export function executeMoveTri16(state: TriGameState16, from: TriSquare, to: Tri
     ns.validMoves = getLegalMovesTri16(ns, to);
     return ns;
   }
+
+  return advanceTurnTri16(ns);
+}
+
+// ─── PALADIN REVERSE CASTLE (execute) ────────────────────────────────────────
+// Swap the paladin with an adjacent ally on the SAME board — matches Tri
+// 12x12's executeCastleTri12 exactly.
+export function executeCastleTri16(state: TriGameState16, from: TriSquare, to: TriSquare): TriGameState16 {
+  if (from.boardId !== to.boardId) return state;
+  const ns = cloneTriGameState16(state);
+  const board = ns.boards[from.boardId];
+  const paladin = board[from.row][from.col];
+  const ally = board[to.row][to.col];
+  if (!paladin || paladin.type !== "paladin" || !ally || ally.type === "paladin" || ally.color !== paladin.color) {
+    return state;
+  }
+
+  board[from.row][from.col] = { ...ally, hasMoved: true };
+  board[to.row][to.col] = { ...paladin, hasMoved: true };
+
+  ns.lastMove = { from, to };
+  ns.selectedSquare = null; ns.validMoves = []; ns.superMoves = []; ns.castleMoves = [];
+  ns.superMoveMode = false; ns.specialMode = null; ns.specialData = null; ns.spellMessage = null; ns.wishDiceResult = null;
+  ns.status = "playing";
 
   return advanceTurnTri16(ns);
 }
@@ -1019,6 +1157,7 @@ export function eliminatePlayerTri16(state: TriGameState16, color: TriColor): Tr
 
   ns.selectedSquare = null;
   ns.validMoves = [];
+  ns.superMoves = []; ns.superMoveMode = false; ns.castleMoves = [];
   ns.specialMode = null; ns.specialData = null; ns.spellMessage = null;
   ns.wishDiceResult = null; ns.pendingAxeSquare = null;
 
@@ -1056,6 +1195,7 @@ export function passTurnTri16(state: TriGameState16): TriGameState16 {
   ns.currentTurn = getNextTurn(color, ns.turnOrder);
   ns.selectedSquare = null;
   ns.validMoves = [];
+  ns.superMoves = []; ns.superMoveMode = false; ns.castleMoves = [];
   ns.specialMode = null; ns.specialData = null; ns.spellMessage = null;
   ns.wishDiceResult = null; ns.pendingAxeSquare = null;
   ns.lastMoveQuality = null;
