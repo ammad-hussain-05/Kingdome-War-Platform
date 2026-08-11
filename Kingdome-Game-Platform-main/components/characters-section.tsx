@@ -93,7 +93,7 @@ export default function CharactersSection() {
 
   useEffect(() => {
     if (paused) return
-    const id = setInterval(() => setActive(p => (p + 1) % TOTAL), 3000)
+    const id = setInterval(() => setActive(p => (p + 1) % TOTAL), 8000)
     return () => clearInterval(id)
   }, [paused])
 
@@ -104,8 +104,8 @@ export default function CharactersSection() {
   const t = clampNum(0, (vw - 360) / (1024 - 360), 1)
   const lerp = (min: number, max: number) => min + (max - min) * t
 
-  const CW  = lerp(140, 230)
-  const SW  = lerp(92,  155)
+  const CW  = lerp(160, 260)
+  const SW  = lerp(100, 175)
   const GAP = lerp(8,   22)
 
   const slotX = (s: number) => {
@@ -118,9 +118,9 @@ export default function CharactersSection() {
 
   // Character art height — scales with viewport so the name tag below it
   // always has room and never gets clipped by the carousel's overflow:hidden.
-  const imgH = lerp(150, 300)
+  const imgH = lerp(180, 360)
   // Extra height reserved beyond the art for margin + (possibly wrapped) name tag.
-  const containerH = lerp(330, 440)
+  const containerH = lerp(400, 540)
 
   const nameFontSize      = lerp(8, 11)
   const nameLetterSpacing = lerp(1, 2)
@@ -169,46 +169,12 @@ export default function CharactersSection() {
         style={{
           position:   "relative",
           width:      "100%",
-          minHeight:  "100vh",
+          minHeight:  "120vh",
           background: "#050508",   /* ← hard dark, always visible */
           overflow:   "hidden",
         }}
       >
-        {/* ── Deep radial glows ── */}
-        <div style={{
-          position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none",
-          background: `
-            radial-gradient(ellipse 70% 50% at 50% 0%,   rgba(201,168,76,0.10) 0%, transparent 60%),
-            radial-gradient(ellipse 50% 40% at 10% 50%,  rgba(201,168,76,0.06) 0%, transparent 60%),
-            radial-gradient(ellipse 50% 40% at 90% 50%,  rgba(201,168,76,0.06) 0%, transparent 60%),
-            radial-gradient(ellipse 80% 60% at 50% 100%, rgba(201,168,76,0.08) 0%, transparent 60%)
-          `,
-        }} />
-
-        {/* ── SVG grid — medieval game board feel ── */}
-        <svg
-          style={{ position:"absolute", inset:0, width:"100%", height:"100%", zIndex:0, pointerEvents:"none", opacity:0.15 }}
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <defs>
-            <pattern id="cs-grid"    width="60"  height="60"  patternUnits="userSpaceOnUse">
-              <path d="M 60 0 L 0 0 0 60"   fill="none" stroke="#c9a84c" strokeWidth="0.4"/>
-            </pattern>
-            <pattern id="cs-grid-lg" width="180" height="180" patternUnits="userSpaceOnUse">
-              <path d="M 180 0 L 0 0 0 180" fill="none" stroke="#c9a84c" strokeWidth="0.9"/>
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#cs-grid)" />
-          <rect width="100%" height="100%" fill="url(#cs-grid-lg)" />
-        </svg>
-
-        {/* ── Vignette — dark edges ── */}
-        <div style={{
-          position:"absolute", inset:0, zIndex:0, pointerEvents:"none",
-          background:"radial-gradient(ellipse 90% 90% at 50% 50%, transparent 35%, rgba(2,2,4,0.9) 100%)",
-        }} />
-
-        {/* ── CSS spark particles ── */}
+        {/* ── CSS spark particles — the only background effect kept ── */}
         {SPARKS.map(s => (
           <div
             key={s.id}
@@ -236,7 +202,7 @@ export default function CharactersSection() {
         <div style={{
           position:       "relative",
           zIndex:         10,
-          minHeight:      "100vh",
+          minHeight:      "120vh",
           display:        "flex",
           flexDirection:  "column",
           justifyContent: "center",

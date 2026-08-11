@@ -217,33 +217,56 @@ function CompactPlayerPill({ color, name, isMe, isActive, isElim }: {
 }
 
 // ─── CONTROL CARD (right panel — icon badge + title + subtitle) ────────────
-function ControlCard({ icon, title, subtitle, accent, onClick, disabled, isMobile }: {
-  icon: string; title: string; subtitle: string; accent: string; onClick: () => void; disabled?: boolean; isMobile: boolean;
+// `uniform` switches from the per-action accent-colored look to the shared
+// parchment/gold style used by Pass Turn, Battle Guide, Game Rules and Quit
+// Game — Super Attack keeps its accent-colored look by omitting the prop.
+function ControlCard({ icon, title, subtitle, accent, onClick, disabled, isMobile, uniform }: {
+  icon: string; title: string; subtitle: string; accent: string; onClick: () => void; disabled?: boolean; isMobile: boolean; uniform?: boolean;
 }) {
   return (
-    <button className="x12-btn" onClick={onClick} disabled={disabled}
+    <button className={uniform ? "x12-btn x12-btn-uniform" : "x12-btn"} onClick={onClick} disabled={disabled}
       style={{
         display: "flex", alignItems: "flex-start", gap: 12, width: isMobile ? undefined : "100%", textAlign: "left",
         padding: "13px 14px", borderRadius: 14, cursor: disabled ? "default" : "pointer", marginBottom: isMobile ? 0 : 12,
-        background: `linear-gradient(160deg,${accent}1c,${accent}0a)`, border: `1px solid ${accent}4a`, opacity: disabled ? .5 : 1,
+        opacity: disabled ? .5 : 1,
         fontFamily: "'Cinzel',Georgia,serif",
-        boxShadow: `0 8px 20px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.08)`,
+        ...(uniform ? {} : {
+          background: `linear-gradient(160deg,${accent}1c,${accent}0a)`, border: `1px solid ${accent}4a`,
+          boxShadow: `0 8px 20px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.08)`,
+        }),
       }}>
-      <span style={{ width: 38, height: 38, borderRadius: 10, background: `${accent}26`, border: `1px solid ${accent}60`, boxShadow: `inset 0 1px 0 rgba(255,255,255,.15), 0 0 10px ${accent}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0 }}>{icon}</span>
+      <span style={{
+        width: 38, height: 38, borderRadius: 10,
+        background: uniform ? "rgba(212,168,67,.18)" : `${accent}26`,
+        border: uniform ? "1px solid rgba(212,168,67,.4)" : `1px solid ${accent}60`,
+        boxShadow: uniform ? "inset 0 1px 0 rgba(255,255,255,.15)" : `inset 0 1px 0 rgba(255,255,255,.15), 0 0 10px ${accent}30`,
+        display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0,
+      }}>{icon}</span>
       {!isMobile && (
         <span style={{ minWidth: 0 }}>
-          <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: accent, letterSpacing: ".06em", textTransform: "uppercase" }}>{title}</p>
-          <p style={{ margin: "3px 0 0", fontSize: 10.5, color: "rgba(220,220,230,.55)", lineHeight: 1.4 }}>{subtitle}</p>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: uniform ? "#ffffff" : accent, letterSpacing: ".06em", textTransform: "uppercase" }}>{title}</p>
+          <p style={{ margin: "3px 0 0", fontSize: 10.5, color: uniform ? "rgba(255,255,255,.55)" : "rgba(220,220,230,.55)", lineHeight: 1.4 }}>{subtitle}</p>
         </span>
       )}
-      {isMobile && <span style={{ fontSize: 11, fontWeight: 800, color: accent, letterSpacing: ".05em", textTransform: "uppercase", alignSelf: "center" }}>{title}</span>}
+      {isMobile && <span style={{ fontSize: 11, fontWeight: 800, color: uniform ? "#ffffff" : accent, letterSpacing: ".05em", textTransform: "uppercase", alignSelf: "center" }}>{title}</span>}
     </button>
   );
 }
 
+// Spell-card icon — same real character artwork as the Battle Guide's
+// RulePieceIcon, sized to fill the spell card's badge instead of a plain
+// emoji glyph.
+function SpellPieceIconX12({ pieceType, fallback }: { pieceType: PieceTypeX12; fallback: string }) {
+  const [failed, setFailed] = useState(false);
+  const nm = GUIDE_ICON_FILE[pieceType];
+  if (failed || !nm) return <>{fallback}</>;
+  return <img src={`/all-characters/${nm}.png`} alt={pieceType} onError={() => setFailed(true)}
+    style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }} />;
+}
+
 // ─── MODERN SPELL CARD — cleaner, more premium than the old boxy spell bar ──
-function SpellCard({ icon, title, subtitle, accent, onClick }: {
-  icon: string; title: string; subtitle: string; accent: string; onClick: () => void;
+function SpellCard({ icon, pieceType, title, subtitle, accent, onClick }: {
+  icon: string; pieceType: PieceTypeX12; title: string; subtitle: string; accent: string; onClick: () => void;
 }) {
   const [hot, setHot] = useState(false);
   return (
@@ -259,7 +282,9 @@ function SpellCard({ icon, title, subtitle, accent, onClick }: {
         border: `1px solid ${hot ? accent + "90" : accent + "38"}`,
         boxShadow: hot ? `0 16px 34px rgba(0,0,0,.55), 0 0 20px ${accent}40` : "0 8px 20px rgba(0,0,0,.4)",
       }}>
-      <span style={{ width: 42, height: 42, borderRadius: 13, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, background: `${accent}22`, border: `1px solid ${accent}55`, boxShadow: `inset 0 1px 0 rgba(255,255,255,.12)` }}>{icon}</span>
+      <span style={{ width: 42, height: 42, borderRadius: 13, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, background: `${accent}22`, border: `1px solid ${accent}55`, boxShadow: `inset 0 1px 0 rgba(255,255,255,.12)`, overflow: "hidden" }}>
+        <SpellPieceIconX12 pieceType={pieceType} fallback={icon} />
+      </span>
       <span style={{ fontSize: 11.5, fontWeight: 800, color: accent, letterSpacing: ".04em" }}>{title}</span>
       <span style={{ fontSize: 9.5, color: "rgba(230,220,200,.55)", lineHeight: 1.4 }}>{subtitle}</span>
     </button>
@@ -838,13 +863,13 @@ export default function BoardX12x12({ myColor, roomId, playerNames, onGameEnd, s
       {!gs.specialMode && gs.wishDiceResult === null && !gs.superMoveMode && (
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
           {hasSorc && <>
-            <SpellCard icon="😴" title="Sleep" subtitle={`${spellsLeft} charges left`} accent="#9090ff" onClick={() => handleSpecial("spell-sleep")} />
-            <SpellCard icon="🌀" title="Teleport" subtitle="Move any piece" accent="#d080ff" onClick={() => handleSpecial("spell-teleport")} />
-            <SpellCard icon="⭐" title="Wish" subtitle="Roll the dice" accent="#f0c040" onClick={() => handleSpecial("spell-wish")} />
+            <SpellCard icon="😴" pieceType="sorceress" title="Sleep" subtitle={`${spellsLeft} charges left`} accent="#9090ff" onClick={() => handleSpecial("spell-sleep")} />
+            <SpellCard icon="🌀" pieceType="sorceress" title="Teleport" subtitle="Move any piece" accent="#d080ff" onClick={() => handleSpecial("spell-teleport")} />
+            <SpellCard icon="⭐" pieceType="sorceress" title="Wish" subtitle="Roll the dice" accent="#f0c040" onClick={() => handleSpecial("spell-wish")} />
           </>}
-          {hasWiz && <SpellCard icon="🧙" title="Wizard Teleport" subtitle="Relocate any piece" accent="#60c0f0" onClick={() => handleSpecial("wizard-teleport")} />}
-          {hasKingMorph && <SpellCard icon="🔮" title="Last Wish" subtitle="Morph the King" accent="#e8dfc0" onClick={() => handleSpecial("king-morph")} />}
-          {mageNextToQueen && <SpellCard icon="💫" title="Mage Sacrifice" subtitle="Restore Super Queen" accent="#ff9090" onClick={() => handleSpecial("mage-sacrifice", mageNextToQueen)} />}
+          {hasWiz && <SpellCard icon="🧙" pieceType="wizard" title="Wizard Teleport" subtitle="Relocate any piece" accent="#60c0f0" onClick={() => handleSpecial("wizard-teleport")} />}
+          {hasKingMorph && <SpellCard icon="🔮" pieceType="mystic-king" title="Last Wish" subtitle="Morph the King" accent="#e8dfc0" onClick={() => handleSpecial("king-morph")} />}
+          {mageNextToQueen && <SpellCard icon="💫" pieceType="mage" title="Mage Sacrifice" subtitle="Restore Super Queen" accent="#ff9090" onClick={() => handleSpecial("mage-sacrifice", mageNextToQueen)} />}
         </div>
       )}
       {gs.superMoveMode && <p style={{ margin: "0 0 4px", fontSize: 11, color: "#ffb347", textAlign: "center", fontWeight: 700 }}>⚔ Choose a square 3 spaces away to strike</p>}
@@ -865,19 +890,19 @@ export default function BoardX12x12({ myColor, roomId, playerNames, onGameEnd, s
   );
   const passBtn = (
     <ControlCard isMobile={isMobile} icon="⏩" accent="#60a5fa" title="Pass Turn" subtitle="Hand the battlefield to the next kingdom"
-      disabled={!isMyTurn} onClick={handlePass} />
+      disabled={!isMyTurn} onClick={handlePass} uniform />
   );
   const guideBtn = (
     <ControlCard isMobile={isMobile} icon="📖" accent="#c084fc" title="Battle Guide" subtitle="Master every unit's powers and abilities"
-      onClick={() => setShowGuide(true)} />
+      onClick={() => setShowGuide(true)} uniform />
   );
   const rulesBtn = (
     <ControlCard isMobile={isMobile} icon="📜" accent="#4ade80" title="Game Rules" subtitle="Discover the path to becoming the last kingdom standing"
-      onClick={() => setShowRules(true)} />
+      onClick={() => setShowRules(true)} uniform />
   );
   const quitBtn = !isElim && gs.status === "playing" && (
     <ControlCard isMobile={isMobile} icon="🚩" accent="#f87171" title="Quit Game" subtitle="Retreat and forfeit your kingdom's claim"
-      onClick={() => setShowQuitConfirm(true)} />
+      onClick={() => setShowQuitConfirm(true)} uniform />
   );
 
   return (
@@ -897,10 +922,12 @@ export default function BoardX12x12({ myColor, roomId, playerNames, onGameEnd, s
         @keyframes x12WinPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.02)}}
         .x12sq{position:relative;overflow:hidden;cursor:pointer;transition:filter .1s;}
         .x12sq:hover{filter:brightness(1.2);}
-        .x12-btn{backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease,background .18s ease;box-shadow:0 6px 18px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.06);}
-        .x12-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 26px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.12);}
+        .x12-btn{backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:all .18s ease;box-shadow:0 6px 18px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.06);}
+        .x12-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 26px rgba(0,0,0,.55);}
         .x12-btn:active:not(:disabled){transform:translateY(0) scale(.98);}
         .x12-btn:disabled{cursor:default;}
+        .x12-btn-uniform{background:linear-gradient(160deg,#5c3d1f 0%,#2a1a0a 100%);border:1px solid rgba(212,168,67,.35);box-shadow:0 8px 20px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.08);}
+        .x12-btn-uniform:hover:not(:disabled){background:linear-gradient(160deg,#6b4726 0%,#331f0d 100%);box-shadow:0 12px 26px rgba(0,0,0,.55);}
         .x12pi{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:88%;height:88%;object-fit:contain;pointer-events:none;filter:drop-shadow(0 3px 6px rgba(0,0,0,.9));}
         .x12-rule-card{padding:16px 18px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid rgba(212,168,67,.1);transition:border-color .2s,background .2s;display:flex;gap:16px;align-items:flex-start;}
         .x12-rule-card:hover{background:rgba(212,168,67,.05);border-color:rgba(212,168,67,.22);}
@@ -995,7 +1022,7 @@ export default function BoardX12x12({ myColor, roomId, playerNames, onGameEnd, s
         {/* ── BATTLE GUIDE MODAL ── */}
         {showGuide && (
           <div style={{ position: "fixed", inset: 0, zIndex: 111, background: "rgba(0,0,0,.88)", backdropFilter: "blur(16px)", display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? 14 : 24 }}>
-            <div className="x12-modal-scroll" style={{ width: isMobile ? "96vw" : "min(820px,92vw)", maxHeight: "90vh", overflowY: "auto", borderRadius: 26, padding: isMobile ? "24px 18px" : "34px 34px", background: "linear-gradient(155deg,#0e0902 0%,#1a1005 40%,#0e0902 100%)", border: "1px solid rgba(212,168,67,.22)", fontFamily: "'Cinzel',Georgia,serif" }}>
+            <div className="x12-modal-scroll" data-lenis-prevent style={{ width: isMobile ? "96vw" : "min(820px,92vw)", maxHeight: "90vh", overflowY: "auto", borderRadius: 26, padding: isMobile ? "24px 18px" : "34px 34px", background: "linear-gradient(155deg,#0e0902 0%,#1a1005 40%,#0e0902 100%)", border: "1px solid rgba(212,168,67,.22)", fontFamily: "'Cinzel',Georgia,serif" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <div>
                   <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 27, color: "#e8c96a" }}>🧭 Battle Guide</h2>
@@ -1016,7 +1043,7 @@ export default function BoardX12x12({ myColor, roomId, playerNames, onGameEnd, s
         {/* ── RULES MODAL ── */}
         {showRules && (
           <div style={{ position: "fixed", inset: 0, zIndex: 110, background: "rgba(0,0,0,.88)", backdropFilter: "blur(16px)", display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? 14 : 24 }}>
-            <div className="x12-modal-scroll" style={{ width: isMobile ? "96vw" : "min(860px,94vw)", maxHeight: "90vh", overflowY: "auto", borderRadius: 26, padding: isMobile ? "24px 18px" : "34px 34px", background: "linear-gradient(155deg,#0e0902 0%,#1a1005 40%,#0e0902 100%)", border: "1px solid rgba(212,168,67,.22)", fontFamily: "'Cinzel',Georgia,serif" }}>
+            <div className="x12-modal-scroll" data-lenis-prevent style={{ width: isMobile ? "96vw" : "min(860px,94vw)", maxHeight: "90vh", overflowY: "auto", borderRadius: 26, padding: isMobile ? "24px 18px" : "34px 34px", background: "linear-gradient(155deg,#0e0902 0%,#1a1005 40%,#0e0902 100%)", border: "1px solid rgba(212,168,67,.22)", fontFamily: "'Cinzel',Georgia,serif" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                 <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 28, color: "#e8c96a" }}>⚔️ X Board Rules</h2>
                 <button onClick={() => setShowRules(false)} style={{ width: 42, height: 42, borderRadius: 11, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.5)", cursor: "pointer", fontSize: 18 }}>✕</button>

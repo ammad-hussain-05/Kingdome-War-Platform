@@ -4,6 +4,10 @@ import { Analytics } from '@vercel/analytics/next'
 import { Navigation } from '@/components/navigation'
 import { ConditionalFooter } from '@/components/conditional-footer'
 import GlobalLoaderProvider from '@/components/global-loader-provider'
+import { KingdomLivePulse } from '@/components/kingdom-live-pulse'
+import { BackToTop } from '@/components/back-to-top'
+import { SmoothScrollProvider } from '@/components/smooth-scroll-provider'
+import { CustomCursor } from '@/components/custom-cursor'
 import './globals.css'
 
 const cinzelDecorative = Cinzel_Decorative({
@@ -68,10 +72,14 @@ export default function RootLayout({
         className={`${cinzelDecorative.variable} ${crimsonText.variable} ${medievalSharp.variable} font-sans antialiased`}
       >
         <GlobalLoaderProvider>
+          <SmoothScrollProvider />
+          <CustomCursor />
           <div className="grain-overlay" aria-hidden="true" />
           <Navigation />
           {children}
           <ConditionalFooter />
+          <KingdomLivePulse />
+          <BackToTop />
           <Analytics />
         </GlobalLoaderProvider>
       </body>

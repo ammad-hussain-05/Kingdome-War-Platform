@@ -16,7 +16,7 @@ export type PieceTypeX16 =
   | "mystic-king" | "super-queen" | "wizard" | "sorceress" | "conjurer" | "warlock"
   | "trickster" | "dragon" | "gargoyle" | "thief" | "super-knight" | "elvin-archer"
   | "executioner" | "assassin" | "cavalier" | "mage" | "paladin"
-  | "archer" | "aerobat-assassin";
+  | "archer" | "aerobat-assassin" | "berserker";
 
 // Matches lib/lobby/types.ts MODE_CONFIG["x-16x16"].colors (White/Black/Grey/
 // Golden), same clockwise seating as the other X Boards: white=Top,
@@ -38,6 +38,13 @@ export interface PieceX16 {
   thiefStealUsed: boolean;
   tricksterMovesCount: number;
   conjurerSpellsLeft: number;
+  // Conjurer's one-time Shadow Spell (summons the Berserker) — wholly
+  // separate from conjurerSpellsLeft (the revive spell's charge count).
+  // Matches lib/game/rules-16x16.ts's Piece16 exactly.
+  conjurerShadowSpellUsed: boolean;
+  // Berserker — one-time crowd/rampage attack (cleaves through 2 adjacent
+  // aligned enemies in a single strike).
+  berserkerRampageUsed: boolean;
   boundRoundsLeft: number;
 }
 
@@ -55,7 +62,8 @@ export type SpecialModeX16 =
   | "thief-steal-jump"
   | "mage-sacrifice-pending"
   | "warlock-bind-offer"
-  | "warlock-bind-target-select";
+  | "warlock-bind-target-select"
+  | "berserker-rampage-mode";
 
 export interface GameStateX16 {
   board: BoardX16; currentTurn: PlayerColorX16;
@@ -138,6 +146,7 @@ export function pieceFileNameX16(type: PieceTypeX16, color: PlayerColorX16): str
       "trickster": "Trickster - White", "aerobat-assassin": "Aerobat Assassin - White",
       "cavalier": "Cavalier Prince White", "mage": "Mage-Princess White",
       "paladin": "Paladin - White", "archer": "Archer White", "thief": "Thief White",
+      "berserker": "Beserker-White",
     },
     black: {
       "mystic-king": "Mystic King black", "super-queen": "Super Queen black",
@@ -149,6 +158,7 @@ export function pieceFileNameX16(type: PieceTypeX16, color: PlayerColorX16): str
       "trickster": "Trickster - Black", "aerobat-assassin": "Aerobat Assassin - Black",
       "cavalier": "Cavalier Prince Black", "mage": "Mage-Princess Black",
       "paladin": "Paladin - Black", "archer": "Archer Black", "thief": "Thief Black",
+      "berserker": "Beserker-Black",
     },
     grey: {
       "mystic-king": "Mystic King Gray", "super-queen": "Super Queen Gray",
@@ -159,7 +169,7 @@ export function pieceFileNameX16(type: PieceTypeX16, color: PlayerColorX16): str
       "conjurer": "Conjuror - Silver", "warlock": "Warlock - Silver",
       "trickster": "Trickster - Silver", "aerobat-assassin": "Acrobat Assassin - Silver",
       "cavalier": "Cavalier Prince Gray", "mage": "Mage-Princess Gray",
-      "paladin": "Paladin Gray",
+      "paladin": "Paladin Gray", "berserker": "Beserker-Gray",
       // No Archer or Thief art shipped for grey — caller falls back to the
       // golden art via pieceImageFallbackPathX16.
     },
@@ -173,6 +183,7 @@ export function pieceFileNameX16(type: PieceTypeX16, color: PlayerColorX16): str
       "trickster": "Trickster - Golden", "aerobat-assassin": "Aerobat Assassin - Golden",
       "cavalier": "Cavalier Prince - Golden", "mage": "Mage Princess - Golden",
       "paladin": "Paladin - Golden", "archer": "Archer - Golden", "thief": "Theif - Golden",
+      "berserker": "Beserker-Golden",
     },
   };
   return table[color][type] ?? table.golden[type]!;
@@ -203,6 +214,8 @@ function mkPX16(type: PieceTypeX16, color: PlayerColorX16, id: string): PieceX16
     thiefStealUsed: false,
     tricksterMovesCount: 0,
     conjurerSpellsLeft: 1,
+    conjurerShadowSpellUsed: false,
+    berserkerRampageUsed: false,
     boundRoundsLeft: 0,
   };
 }
@@ -383,6 +396,14 @@ export function getRawMovesX16(b: BoardX16, r: number, c: number): SquareX16[] {
     case "thief":
       m = slide(b, r, c, ALL8, color);
       break;
+    case "berserker":
+      // Unlimited slide, any direction — a non-ethereal piece, so `slide`
+      // already lets it capture both mortal AND ethereal targets. The
+      // wizard/sorceress kill-immunity below is separately waived for this
+      // type — the Berserker's unique combat exception, matching
+      // lib/game/rules-16x16.ts.
+      m = slide(b, r, c, ALL8, color);
+      break;
     case "super-knight":
       m = lj(b, r, c, color);
       break;
@@ -416,7 +437,10 @@ export function getRawMovesX16(b: BoardX16, r: number, c: number): SquareX16[] {
       break;
   }
 
-  if (type !== "wizard" && type !== "sorceress") {
+  // Only a Wizard or Sorceress may kill a Wizard or Sorceress. The Berserker
+  // is the sole exception — its unique combat rule lets it kill BOTH mortal
+  // and immortal/ethereal pieces without restriction.
+  if (type !== "wizard" && type !== "sorceress" && type !== "berserker") {
     m = m.filter(s => {
       const t = b[s.row][s.col];
       return !(t && (t.type === "wizard" || t.type === "sorceress"));
@@ -511,7 +535,7 @@ function evaluateMoveQualityX16(
   let score = 0;
   const pv: Record<PieceTypeX16, number> = {
     "mystic-king": 10, "super-queen": 9, "dragon": 8, "gargoyle": 7, "sorceress": 7,
-    "wizard": 6, "warlock": 6, "conjurer": 6, "trickster": 6, "thief": 5,
+    "wizard": 6, "warlock": 6, "conjurer": 6, "trickster": 6, "thief": 5, "berserker": 8,
     "assassin": 6, "elvin-archer": 5, "aerobat-assassin": 5, "super-knight": 5,
     "executioner": 5, "cavalier": 4, "mage": 4, "paladin": 2, "archer": 4,
   };
@@ -611,6 +635,132 @@ export function applyConjurerReviveX16(b: BoardX16, piece: PieceX16, dSq: Square
   nb[dSq.row][dSq.col] = { ...piece, id: `revived-${Date.now()}` };
   nb[cSq.row][cSq.col] = { ...conjurer, conjurerSpellsLeft: conjurer.conjurerSpellsLeft - 1 };
   return nb;
+}
+
+// ─── CONJURER — one-time Shadow Spell (summons the Berserker) ────────────────
+// "Front" is toward the center of the cross, away from that kingdom's own
+// back rank (Top/white faces down, Bottom/black faces up, Left/golden faces
+// right, Right/grey faces left) — derived directly from createInitialBoardX16's
+// back/front row-or-column placement for each side.
+const FRONT_DIR: Record<PlayerColorX16, [number, number]> = {
+  white: [1, 0], black: [-1, 0], golden: [0, 1], grey: [0, -1],
+};
+
+// Finds the square directly in front of the Conjurer. If that square is
+// occupied or off the play area, expands outward ring by ring to find the
+// nearest empty square, reusing inPlayAreaX16 so the cross-shaped board and
+// its cut corners are respected exactly like every other piece's placement
+// logic. Never overwrites an occupied square. Matches
+// lib/game/rules-16x16.ts's findShadowSummonSquare16.
+export function findShadowSummonSquareX16(b: BoardX16, conjSq: SquareX16, color: PlayerColorX16): SquareX16 | null {
+  const [dr, dc] = FRONT_DIR[color];
+  const front = { row: conjSq.row + dr, col: conjSq.col + dc };
+  const start = inPlayAreaX16(front.row, front.col) ? front : conjSq;
+  if (inPlayAreaX16(front.row, front.col) && !b[front.row][front.col]) return front;
+  for (let radius = 1; radius <= SIZE; radius++) {
+    const candidates: SquareX16[] = [];
+    for (let dR = -radius; dR <= radius; dR++) {
+      for (let dC = -radius; dC <= radius; dC++) {
+        if (Math.max(Math.abs(dR), Math.abs(dC)) !== radius) continue;
+        const rr = start.row + dR, cc = start.col + dC;
+        if (inPlayAreaX16(rr, cc) && !b[rr][cc]) candidates.push({ row: rr, col: cc });
+      }
+    }
+    if (candidates.length > 0) {
+      candidates.sort((a, bq) => {
+        const da = Math.abs(a.row - start.row) + Math.abs(a.col - start.col);
+        const db = Math.abs(bq.row - start.row) + Math.abs(bq.col - start.col);
+        if (da !== db) return da - db;
+        if (a.row !== bq.row) return a.row - bq.row;
+        return a.col - bq.col;
+      });
+      return candidates[0];
+    }
+  }
+  return null;
+}
+
+// Summons the Berserker as a brand-new real game piece — never touches or
+// removes any existing piece. Consumes the Conjurer's one-time Shadow Spell
+// charge only on success.
+export function applyShadowSummonX16(b: BoardX16, conjSq: SquareX16): BoardX16 {
+  const nb = cloneBoardX16(b);
+  const conjurer = nb[conjSq.row][conjSq.col];
+  if (!conjurer || conjurer.type !== "conjurer" || conjurer.conjurerShadowSpellUsed) return nb;
+  const dest = findShadowSummonSquareX16(nb, conjSq, conjurer.color);
+  if (!dest) return nb;
+  nb[dest.row][dest.col] = mkPX16("berserker", conjurer.color, `berserker-${conjurer.color}-${Date.now()}`);
+  nb[conjSq.row][conjSq.col] = { ...conjurer, conjurerShadowSpellUsed: true };
+  return nb;
+}
+
+// ─── BERSERKER — special crowd/rampage attack (one-time) ─────────────────────
+// Cleaves through exactly 2 adjacent, in-line enemy pieces in a single
+// attack: the square immediately next to the Berserker ("mid") and the
+// square directly beyond it on the same line ("far") must both be occupied
+// by enemies. Both are eliminated and the Berserker ends up on "far".
+// Wholly separate from getRawMovesX16/getLegalMovesX16, exactly like the
+// Paladin's one-time Super Move. Matches
+// lib/game/rules-16x16.ts's getBerserkerRampageTargets16 family.
+export function getBerserkerRampageTargetsX16(b: BoardX16, r: number, c: number, color: PlayerColorX16): { mid: SquareX16; far: SquareX16 }[] {
+  const p = b[r][c];
+  if (!p || p.type !== "berserker" || p.berserkerRampageUsed || p.sleepRoundsLeft > 0 || p.boundRoundsLeft > 0) return [];
+  const out: { mid: SquareX16; far: SquareX16 }[] = [];
+  for (const [dr, dc] of ALL8) {
+    const midR = r + dr, midC = c + dc, farR = r + dr * 2, farC = c + dc * 2;
+    if (!inPlayAreaX16(midR, midC) || !inPlayAreaX16(farR, farC)) continue;
+    const mid = b[midR][midC], far = b[farR][farC];
+    if (mid && far && mid.color !== color && far.color !== color) {
+      out.push({ mid: { row: midR, col: midC }, far: { row: farR, col: farC } });
+    }
+  }
+  return out;
+}
+
+export function getLegalBerserkerRampageTargetsX16(b: BoardX16, row: number, col: number, active: PlayerColorX16[]): { mid: SquareX16; far: SquareX16 }[] {
+  const p = b[row][col];
+  if (!p) return [];
+  return getBerserkerRampageTargetsX16(b, row, col, p.color).filter(({ mid, far }) => {
+    const t = cloneBoardX16(b);
+    t[far.row][far.col] = t[row][col];
+    t[row][col] = null;
+    t[mid.row][mid.col] = null;
+    return !isKingInCheckX16(t, p.color, active);
+  });
+}
+
+export function applyBerserkerRampageX16(state: GameStateX16, from: SquareX16, mid: SquareX16, far: SquareX16): GameStateX16 {
+  let ns = cloneStateX16(state);
+  const board = ns.board;
+  const piece = board[from.row][from.col];
+  if (!piece || piece.type !== "berserker") return advanceTurnX16(ns);
+
+  const midTarget = board[mid.row][mid.col];
+  const farTarget = board[far.row][far.col];
+  if (midTarget) ns.capturedBy[piece.color].push(midTarget);
+  if (farTarget) ns.capturedBy[piece.color].push(farTarget);
+  board[mid.row][mid.col] = null;
+  board[far.row][far.col] = { ...piece, berserkerRampageUsed: true, hasMoved: true };
+  board[from.row][from.col] = null;
+
+  ns.lastMove = { from, to: far };
+  ns.selectedSquare = null; ns.validMoves = [];
+  ns.superMoves = []; ns.superMoveMode = false; ns.castleMoves = [];
+  ns.specialMode = null; ns.specialData = null;
+
+  const remainingPlayers = getRemainingPlayersX16(ns.board, ns.turnOrder);
+  ns.eliminatedPlayers = TURN_ORDER.filter(c => !remainingPlayers.includes(c));
+  ns.justEliminated = ns.eliminatedPlayers.find(c => !state.eliminatedPlayers.includes(c)) ?? null;
+  if (remainingPlayers.length === 1) {
+    ns.status = "finished";
+    ns.winner = remainingPlayers[0];
+    ns.currentTurn = remainingPlayers[0];
+    return ns;
+  }
+  ns.turnOrder = remainingPlayers;
+  ns.status = "playing";
+
+  return advanceTurnX16(ns);
 }
 
 // Warlock binds ONE chosen opponent's pieces for 1 round. Classic 16x16 is

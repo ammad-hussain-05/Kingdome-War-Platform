@@ -8,6 +8,8 @@
     applyMageSacrifice16, applyAxeSwing16, applyWarlockBind16, applyThiefSteal16,
     getAxeSwingSquares16, rollWishDice16, cloneState16,
     getThiefStealTargets16, applyTricksterTeleport16, getLegalPaladinSuperMoves16,
+    getLegalBerserkerRampageTargets16, applyBerserkerRampage16, applyShadowSummon16,
+    getLegalCastleMoves16, executeCastle16,
   } from "@/lib/game/rules-16x16";
   import Fireworks from "@/components/game/fireworks";
 
@@ -17,6 +19,7 @@
     "sorceress":"🔮","conjurer":"✨","warlock":"🌑","trickster":"🃏","thief":"🗝️",
     "super-knight":"⚔️","assassin":"🗡️","executioner":"🪓","cavalier":"🏇",
     "mage":"💫","elvin-archer":"🏹","paladin":"🛡️","archer":"🎯","aerobat-assassin":"🦅",
+    "berserker":"😈",
   };
 
   // Rules/guide icons use the single-portrait art in public/all-characters —
@@ -27,7 +30,7 @@
     "conjurer":"Conjurer", "warlock":"Warlock", "trickster":"Trickster", "thief":"Thief",
     "super-knight":"Super Knight", "elvin-archer":"Elven Archer", "executioner":"Executioner",
     "assassin":"Assassin", "cavalier":"Cavalier Prince", "mage":"Mage-Princess", "archer":"Archer",
-    "aerobat-assassin":"Acrobat Assassin", "paladin":"Paladin",
+    "aerobat-assassin":"Acrobat Assassin", "paladin":"Paladin", "berserker":"Beserker",
   };
   function guideIconPath16(type: PieceType16): string {
     const nm = GUIDE_ICON_FILE_16[type];
@@ -39,6 +42,17 @@
     if (failed) return <>{EMOJI[type]}</>;
     return <img src={guideIconPath16(type)} alt={type} onError={() => setFailed(true)}
       style={{ width:"82%", height:"82%", objectFit:"contain", pointerEvents:"none" }}/>;
+  }
+
+  // Spell chips reuse the Battle Guide's portrait art so each spell shows the
+  // casting character instead of a bare emoji; falls back to the spell's own
+  // emoji if the art is missing — no game logic involved, purely cosmetic.
+  function SpellPieceIcon16({ pieceKey, fallback }: { pieceKey: PieceType16; fallback: string }) {
+    const [failed, setFailed] = useState(false);
+    const nm = GUIDE_ICON_FILE_16[pieceKey];
+    if (failed || !nm) return <>{fallback}</>;
+    return <img src={`/all-characters/${nm}.png`} alt={pieceKey} onError={() => setFailed(true)}
+      style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }} />;
   }
 
   const PIECE_INFO: Record<PieceType16,{name:string;move:string;special:string}> = {
@@ -60,8 +74,9 @@
     "aerobat-assassin":{name:"Acrobat Assassin",move:"Moves in any direction, plus an L-shape move, plus 1 square",        special:"Jumps over any piece, even enemies, to perform its L-shape move"},
     "cavalier":       {name:"Cavalier/Prince",move:"Moves in an L-shape, plus 1 square in any direction",           special:"Always lands on the opposite color square"},
     "mage":           {name:"Mage/Princess",  move:"Moves in any direction, unlimited distance",        special:"Sacrifices itself to restore the Super Queen's full power"},
-    "paladin":        {name:"Paladin",        move:"Normal Movement: 1 square in any direction",         special:"Super Move: a one-time 3-square surprise attack in any direction; after use, the Paladin returns to normal 1-square movement"},
+    "paladin":        {name:"Paladin",        move:"Normal Movement: 1 square in any direction",         special:"Super Move: a one-time 3-square surprise attack in any direction; after use, the Paladin returns to normal 1-square movement · Reverse Castle: swap with an ally"},
     "archer":         {name:"Archer",         move:"Moves in any direction, unlimited distance",        special:"Ranged arrow attacks — no special ability"},
+    "berserker":      {name:"Berserker",      move:"Special summoned character — moves in any direction, unlimited distance, once summoned by the Conjurer",   special:"Can kill BOTH mortal and immortal/ethereal characters (immortals cannot kill it back). One-time Rampage attack cleaves through 2 adjacent aligned enemies in a single strike"},
   };
 
   const AC: Record<PlayerColor16,string> = { white:"#e8dfc0", black:"#c8a96e" };
@@ -134,6 +149,8 @@
       bind:{emoji:"⛓️",color:"#8080ff",label:"Warlock Bind!"},
       conjure:{emoji:"✨",color:"#80ffb0",label:"Conjured!"},
       steal:{emoji:"🗝️",color:"#ffb030",label:"Stolen!"},
+      shadow:{emoji:"🌑",color:"#b060ff",label:"Shadow Summon!"},
+      rampage:{emoji:"💥",color:"#ff3030",label:"Berserker Rampage!"},
     };
     const cfg=cfgs[type]||cfgs.teleport;
     return(
@@ -509,10 +526,64 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
     );
   }
 
+  // ─── STANDARD ACTION BUTTON ──────────────────────────────────────────────────
+  // Shared visual treatment for the 4 core action buttons: Pass Turn, Battle
+  // Guide, Game Rules, Quit Game. Deliberately uniform (not accent-colored
+  // per action) — conditional ability buttons like Super Attack / Berserker
+  // Rampage keep their own separate styling and don't use this component.
+  function ActionButton16({icon,title,subtitle,onClick,disabled}:{icon:string;title:string;subtitle?:string;onClick:()=>void;disabled?:boolean}){
+    return(
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        style={{
+          width:"100%",
+          display:"flex",
+          alignItems:"center",
+          gap:10,
+          padding:"13px 14px",
+          borderRadius:14,
+          background:"linear-gradient(160deg, #5c3d1f 0%, #2a1a0a 100%)",
+          border:"1px solid rgba(212,168,67,.35)",
+          boxShadow:"0 8px 20px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08)",
+          fontFamily:"'Cinzel', Georgia, serif",
+          cursor:disabled?"default":"pointer",
+          opacity:disabled?.5:1,
+          transition:"all .18s ease",
+        }}
+        onMouseEnter={e=>{
+          if(disabled)return;
+          e.currentTarget.style.transform="translateY(-2px)";
+          e.currentTarget.style.boxShadow="0 12px 26px rgba(0,0,0,.55)";
+          e.currentTarget.style.background="linear-gradient(160deg, #6b4726 0%, #331f0d 100%)";
+        }}
+        onMouseLeave={e=>{
+          if(disabled)return;
+          e.currentTarget.style.transform="";
+          e.currentTarget.style.boxShadow="0 8px 20px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08)";
+          e.currentTarget.style.background="linear-gradient(160deg, #5c3d1f 0%, #2a1a0a 100%)";
+        }}
+        onMouseDown={e=>{if(disabled)return;e.currentTarget.style.transform="translateY(0) scale(.98)";}}
+        onMouseUp={e=>{if(disabled)return;e.currentTarget.style.transform="translateY(-2px)";}}
+      >
+        <span style={{
+          width:38,height:38,borderRadius:10,flexShrink:0,
+          display:"flex",alignItems:"center",justifyContent:"center",
+          background:"rgba(212,168,67,.18)",
+          border:"1px solid rgba(212,168,67,.4)",
+          fontSize:18
+        }}>{icon}</span>
+        <div style={{textAlign:"left",minWidth:0}}>
+          <p style={{margin:0,fontSize:12,fontWeight:800,color:"#ffffff",textTransform:"uppercase",letterSpacing:".06em"}}>{title}</p>
+          {subtitle&&<p style={{margin:"2px 0 0",fontSize:10.5,color:"rgba(255,255,255,.55)"}}>{subtitle}</p>}
+        </div>
+      </button>
+    );
+  }
+
   // ─── GUIDE PANEL ─────────────────────────────────────────────────────────────
  function GuidePanel16({myColor,gs}:{myColor:PlayerColor16;gs:GameState16}){
   const [open,setOpen]=useState(false);
-  const ac=AC[myColor];
   const myP=new Set<PieceType16>();
 
   for(let r=0;r<16;r++)for(let c=0;c<16;c++){
@@ -522,38 +593,15 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
 
   return(
     <div style={{position:"relative",width:"100%"}}>
-      <button
+      <ActionButton16
+        icon={open?"✕":"🧿"}
+        title={open?"Close Guide":"Battle Guide"}
         onClick={()=>{setOpen(o=>!o);snd("click");}}
-        style={{
-          width:"100%",
-          minHeight:50,
-          padding:"11px 14px",
-          borderRadius:14,
-          background:open?"#050505":"#000",
-          border:`1px solid ${open?ac+"80":ac+"45"}`,
-          color:"#fff",
-          fontSize:11,
-          cursor:"pointer",
-          fontWeight:900,
-          letterSpacing:".13em",
-          textTransform:"uppercase",
-          fontFamily:"'Cinzel',Georgia,serif",
-          transition:"all .2s",
-          display:"flex",
-          alignItems:"center",
-          justifyContent:"center",
-          gap:9,
-          boxShadow:open
-            ? `0 0 22px ${GL[myColor]}, inset 0 1px 0 rgba(255,255,255,.12)`
-            : "0 10px 22px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.08)"
-        }}
-      >
-        <span style={{fontSize:16}}>{open?"✕":"🧿"}</span>
-        <span>{open?"Close Guide":"Battle Guide"}</span>
-      </button>
+      />
 
       {open&&(
         <div
+          data-lenis-prevent
           style={{
             position:"absolute",
             bottom:"110%",
@@ -652,6 +700,15 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
   );
 }
 
+  // Conjurer revive picker — real board sprite (own color, since a revived
+  // piece always belongs to the caster) with the plain emoji as a fallback.
+  function RevivePieceIcon16({piece}:{piece:Piece16}){
+    const [failed,setFailed]=useState(false);
+    if(failed)return <>{EMOJI[piece.type]}</>;
+    return <img src={pieceImagePath16(piece)} alt={piece.type} onError={()=>setFailed(true)}
+      style={{width:"100%",height:"100%",objectFit:"contain",pointerEvents:"none"}}/>;
+  }
+
   // ─── SPECIAL PANEL — MODERN ───────────────────────────────────────────────────
   function SpecialPanel16({gs,myColor,onAction,onCancel}:{gs:GameState16;myColor:PlayerColor16;onAction:(a:string,d?:any)=>void;onCancel:()=>void}){
     const ac=AC[myColor];
@@ -663,6 +720,7 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
     const hasWiz=!!findWizard16(gs.board,myColor);
     const conjSq=findConjurer16(gs.board,myColor);
     const hasConj=conjSq?(gs.board[conjSq.row][conjSq.col]?.conjurerSpellsLeft||0)>0:false;
+    const hasShadowSpell=conjSq?!gs.board[conjSq.row][conjSq.col]?.conjurerShadowSpellUsed:false;
     let hasWarlock=false;
     for(let r=0;r<16;r++)for(let c=0;c<16;c++){const p=gs.board[r][c];if(p&&p.type==="warlock"&&p.color===myColor){hasWarlock=true;break;}}
     let hasThief=false;
@@ -682,23 +740,24 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
     };
     const mNQ=findMageQueen();
     const deadPieces=gs.capturedBy[myColor].filter(p=>p.type!=="mystic-king");
-    if(!hasSorc&&!hasWiz&&!hasConj&&!hasWarlock&&!hasThief&&!hasTrickster&&!mNQ&&gs.specialMode!=="warlock-bind-offer"&&!gs.spellMessage&&!gs.superMoveMode)return null;
+    if(!hasSorc&&!hasWiz&&!hasConj&&!hasShadowSpell&&!hasWarlock&&!hasThief&&!hasTrickster&&!mNQ&&gs.specialMode!=="warlock-bind-offer"&&!gs.spellMessage&&!gs.superMoveMode)return null;
 
     const spells=[
-      hasSorc&&{id:"spell-sleep",icon:"😴",label:`Sleep`,sub:`${spL} left`,color:"#9b7fff",bg:"rgba(100,60,255,.15)",border:"rgba(120,80,255,.4)"},
-      hasSorc&&{id:"spell-teleport",icon:"🌀",label:"Teleport",sub:"any piece",color:"#d080ff",bg:"rgba(180,60,220,.15)",border:"rgba(180,60,220,.4)"},
-      hasSorc&&{id:"spell-wish",icon:"⭐",label:"Wish",sub:"dice roll",color:"#f0c040",bg:"rgba(200,160,20,.15)",border:"rgba(200,160,20,.4)"},
-      hasWiz&&{id:"wizard-teleport",icon:"🧙",label:"Wizard",sub:"teleport any piece",color:"#60c8ff",bg:"rgba(40,140,220,.15)",border:"rgba(40,140,220,.4)"},
-      (hasConj&&deadPieces.length>0)&&{id:"conjurer-revive",icon:"✨",label:"Conjure",sub:"revive 1 piece",color:"#80ffb0",bg:"rgba(60,200,100,.15)",border:"rgba(60,200,100,.4)"},
+      hasSorc&&{id:"spell-sleep",icon:"😴",pieceKey:"sorceress" as PieceType16,label:`Sleep`,sub:`${spL} left`,color:"#9b7fff",bg:"rgba(100,60,255,.15)",border:"rgba(120,80,255,.4)"},
+      hasSorc&&{id:"spell-teleport",icon:"🌀",pieceKey:"sorceress" as PieceType16,label:"Teleport",sub:"any piece",color:"#d080ff",bg:"rgba(180,60,220,.15)",border:"rgba(180,60,220,.4)"},
+      hasSorc&&{id:"spell-wish",icon:"⭐",pieceKey:"sorceress" as PieceType16,label:"Wish",sub:"dice roll",color:"#f0c040",bg:"rgba(200,160,20,.15)",border:"rgba(200,160,20,.4)"},
+      hasWiz&&{id:"wizard-teleport",icon:"🧙",pieceKey:"wizard" as PieceType16,label:"Wizard",sub:"teleport any piece",color:"#60c8ff",bg:"rgba(40,140,220,.15)",border:"rgba(40,140,220,.4)"},
+      (hasConj&&deadPieces.length>0)&&{id:"conjurer-revive",icon:"✨",pieceKey:"conjurer" as PieceType16,label:"Conjure",sub:"revive 1 piece",color:"#80ffb0",bg:"rgba(60,200,100,.15)",border:"rgba(60,200,100,.4)"},
+      hasShadowSpell&&{id:"conjurer-shadow-summon",icon:"🌑",pieceKey:"conjurer" as PieceType16,label:"Shadow",sub:"summon Berserker",color:"#b060ff",bg:"rgba(120,40,200,.15)",border:"rgba(140,60,220,.4)"},
       // Bind is never cast from here directly — the Warlock must move first,
       // which opens the "Cast Bind / Skip" prompt automatically. This chip
       // is a visibility/discoverability indicator, shown only to the player
       // who owns a Warlock, and is disabled until that prompt is live.
-      hasWarlock&&{id:"warlock-bind-hint",icon:"⛓️",label:"Bind",sub:"move Warlock to activate",color:"#a080ff",bg:"rgba(100,60,200,.15)",border:"rgba(100,60,200,.4)",disabled:true},
-      hasThief&&{id:"thief-steal",icon:"🗝️",label:"Steal",sub:"triple jump",color:"#e0c080",bg:"rgba(160,120,20,.15)",border:"rgba(160,120,20,.4)"},
-      hasTrickster&&{id:"trickster-teleport",icon:"🃏",label:"Teleport",sub:"reposition any piece",color:"#ff90d0",bg:"rgba(200,40,140,.15)",border:"rgba(200,40,140,.4)"},
-      mNQ&&{id:"mage-sacrifice",icon:"💫",label:"Mage",sub:"sacrifice",color:"#ff9090",bg:"rgba(200,60,60,.15)",border:"rgba(200,60,60,.4)"},
-    ].filter(Boolean) as {id:string;icon:string;label:string;sub:string;color:string;bg:string;border:string;disabled?:boolean}[];
+      hasWarlock&&{id:"warlock-bind-hint",icon:"⛓️",pieceKey:"warlock" as PieceType16,label:"Bind",sub:"move Warlock to activate",color:"#a080ff",bg:"rgba(100,60,200,.15)",border:"rgba(100,60,200,.4)",disabled:true},
+      hasThief&&{id:"thief-steal",icon:"🗝️",pieceKey:"thief" as PieceType16,label:"Steal",sub:"triple jump",color:"#e0c080",bg:"rgba(160,120,20,.15)",border:"rgba(160,120,20,.4)"},
+      hasTrickster&&{id:"trickster-teleport",icon:"🃏",pieceKey:"trickster" as PieceType16,label:"Teleport",sub:"reposition any piece",color:"#ff90d0",bg:"rgba(200,40,140,.15)",border:"rgba(200,40,140,.4)"},
+      mNQ&&{id:"mage-sacrifice",icon:"💫",pieceKey:"mage" as PieceType16,label:"Mage",sub:"sacrifice",color:"#ff9090",bg:"rgba(200,60,60,.15)",border:"rgba(200,60,60,.4)"},
+    ].filter(Boolean) as {id:string;icon:string;pieceKey:PieceType16;label:string;sub:string;color:string;bg:string;border:string;disabled?:boolean}[];
 
     return(
       <div style={{position:"relative",zIndex:20,margin:"1px auto 0",width:"min(560px,98vw)"}}>
@@ -766,7 +825,7 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
 }}
                 onMouseEnter={e=>{if(sp.disabled)return;e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow=`0 8px 24px ${sp.bg},inset 0 1px 0 rgba(255,255,255,.12)`;}}
                 onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow=`0 4px 16px ${sp.bg},inset 0 1px 0 rgba(255,255,255,.08)`;}}>
-                <span style={{fontSize:22,filter:"drop-shadow(0 2px 6px rgba(0,0,0,.6))"}}>{sp.icon}</span>
+                <span style={{width:26,height:26,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,filter:"drop-shadow(0 2px 6px rgba(0,0,0,.6))"}}><SpellPieceIcon16 pieceKey={sp.pieceKey} fallback={sp.icon}/></span>
                 <span style={{fontSize:10,fontWeight:900,letterSpacing:".08em",textTransform:"uppercase"}}>{sp.label}</span>
                 <span style={{fontSize:8,opacity:.65,letterSpacing:".04em"}}>{sp.sub}</span>
               </button>
@@ -781,7 +840,7 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
             <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"center"}}>
               {(gs.specialData.deadPieces as Piece16[]).map((p,i)=>(
                 <button key={i} onClick={()=>onAction("conjurer-pick",{piece:p})} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 12px",borderRadius:10,background:"rgba(80,200,100,.12)",border:"1px solid rgba(80,200,100,.3)",color:"#80ffb0",cursor:"pointer",fontSize:10,fontWeight:700}}>
-                  <span style={{fontSize:18}}>{EMOJI[p.type]}</span><span>{p.type}</span>
+                  <span style={{width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}><RevivePieceIcon16 piece={p}/></span><span>{p.type}</span>
                 </button>
               ))}
             </div>
@@ -943,6 +1002,14 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
       else if(action==="conjurer-pick"&&data){
         ns={...cloneState16(state),specialData:{...state.specialData,selectedPiece:data.piece},spellMessage:"✨ Click an empty square to place the conjured piece"};
       }
+      else if(action==="conjurer-shadow-summon"){
+        let cSq:Square16|null=null;
+        for(let r=0;r<16;r++)for(let c=0;c<16;c++)if(state.board[r][c]?.type==="conjurer"&&state.board[r][c]?.color===myColor)cSq={row:r,col:c};
+        if(!cSq)return;
+        const board=applyShadowSummon16(state.board,cSq);
+        ns=advanceTurn16({...cloneState16(state),board});
+        snd("spell");setSpellEffect("shadow");
+      }
       else if(action==="warlock-bind-confirm"){
         // Only reachable via the "warlock-bind-offer" mode, which is set
         // right after the Warlock moves — "he must make one move to do
@@ -968,7 +1035,7 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
 
     const cancelSpecial=useCallback(()=>{
       const state=gsRef.current;
-      const ns={...cloneState16(state),specialMode:null as any,specialData:null,spellMessage:null,wishDiceResult:null,selectedSquare:null,validMoves:[],superMoves:[],superMoveMode:false};
+      const ns={...cloneState16(state),specialMode:null as any,specialData:null,spellMessage:null,wishDiceResult:null,selectedSquare:null,validMoves:[],superMoves:[],superMoveMode:false,castleMoves:[]};
       setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
     },[roomId,socket]);
 
@@ -982,6 +1049,21 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
       const superMoves=getLegalPaladinSuperMoves16(state.board,row,col,state.turnOrder);
       snd("select");
       const ns={...cloneState16(state),superMoves,superMoveMode:true,validMoves:[]};
+      setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
+    },[myColor,roomId,socket]);
+
+    // ─── BERSERKER RAMPAGE (one-time crowd/cleave attack) ──────────────────────
+    const handleBerserkerRampage16=useCallback(()=>{
+      const state=gsRef.current;
+      if(!state.selectedSquare)return;
+      const {row,col}=state.selectedSquare;
+      const piece=state.board[row][col];
+      if(!piece||piece.type!=="berserker"||piece.color!==myColor||piece.berserkerRampageUsed)return;
+      const targets=getLegalBerserkerRampageTargets16(state.board,row,col,state.turnOrder);
+      snd("select");
+      const ns={...cloneState16(state),specialMode:"berserker-rampage-mode" as any,specialData:{targets,from:{row,col}},
+        spellMessage:targets.length?"💥 Choose a target — cleave through 2 enemies in a line":"⚠️ No valid rampage targets right now",
+        selectedSquare:{row,col},validMoves:[],superMoves:[],superMoveMode:false};
       setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
     },[myColor,roomId,socket]);
 
@@ -1003,6 +1085,32 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
         showMoveFeedback(ns,sq);
         setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
         if(ns.status==="finished"&&ns.winner){setTimeout(()=>{setShowWin(ns.winner);snd("win");},400);onGameEnd?.(ns.winner!);}
+        return;
+      }
+
+      // Berserker Rampage — wholly separate from normal validMoves, exactly
+      // like the Paladin's Super Move. Clicking either the "mid" or "far"
+      // square of a valid line confirms that direction's cleave attack.
+      if(specialMode==="berserker-rampage-mode"){
+        const targets=(state.specialData?.targets||[]) as {mid:Square16;far:Square16}[];
+        const from=state.specialData?.from as Square16|undefined;
+        const match=targets.find(t=>sq16Eq(t.far,sq)||sq16Eq(t.mid,sq));
+        if(from&&match){
+          const ns=applyBerserkerRampage16(state,from,match.mid,match.far);
+          setAnimSq(sq);setTimeout(()=>setAnimSq(null),450);
+          snd("capture");setSpellEffect("rampage");
+          setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
+          if(ns.status==="finished"&&ns.winner){setTimeout(()=>{setShowWin(ns.winner);snd("win");},400);onGameEnd?.(ns.winner!);}
+        }
+        return;
+      }
+
+      // Reverse Castle — swap the selected paladin with an adjacent ally.
+      if(selectedSquare&&state.castleMoves.some(m=>sq16Eq(m,sq))){
+        const ns=executeCastle16(state,selectedSquare,sq);
+        setAnimSq(sq);setTimeout(()=>setAnimSq(null),420);
+        snd("move");
+        setGs(ns);socket?.emit("game:move",{roomId,newState:ns,action:"castle"});
         return;
       }
 
@@ -1092,9 +1200,9 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
       }
       if(cp&&cp.color===myColor&&cp.sleepRoundsLeft===0&&cp.boundRoundsLeft===0){
         snd("select");const moves=getLegalMoves16(board,row,col,state.turnOrder);
-        setGs(prev=>({...prev,selectedSquare:sq,validMoves:moves,superMoves:[],superMoveMode:false}));return;
+        setGs(prev=>({...prev,selectedSquare:sq,validMoves:moves,castleMoves:cp.type==="paladin"?getLegalCastleMoves16(board,row,col):[],superMoves:[],superMoveMode:false}));return;
       }
-      setGs(prev=>({...prev,selectedSquare:null,validMoves:[],superMoves:[],superMoveMode:false}));
+      setGs(prev=>({...prev,selectedSquare:null,validMoves:[],castleMoves:[],superMoves:[],superMoveMode:false}));
     },[myColor,roomId,socket,onGameEnd]);
 
     // ─── QUIT ────────────────────────────────────────────────────────────────
@@ -1208,151 +1316,35 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
     );
   })()}
 
-  {/* GAME RULES */}
-  <button
-    onClick={()=>setShowRules(true)}
-    style={{
-      width:"100%",
-      height:54,
-      position:"relative",
-      overflow:"hidden",
-      background:"linear-gradient(145deg,#071109 0%,#050505 45%,#0c1b10 100%)",
-      color:"#ffffff",
-      border:"1px solid rgba(74,222,128,.28)",
-      borderRadius:16,
-      fontSize:13,
-      fontWeight:800,
-      cursor:"pointer",
-      letterSpacing:".14em",
-      textTransform:"uppercase",
-      fontFamily:"'Cinzel',Georgia,serif",
-      transition:"all .22s ease",
-      boxShadow:"0 10px 26px rgba(0,0,0,.58), inset 0 1px 0 rgba(255,255,255,.08)",
-      display:"flex",
-      alignItems:"center",
-      justifyContent:"center",
-      gap:10
-    }}
-    onMouseEnter={e=>{
-      e.currentTarget.style.transform="translateY(-2px) scale(1.02)";
-      e.currentTarget.style.boxShadow="0 0 24px rgba(74,222,128,.22),0 16px 34px rgba(0,0,0,.72), inset 0 1px 0 rgba(255,255,255,.12)";
-      e.currentTarget.style.borderColor="rgba(74,222,128,.65)";
-    }}
-    onMouseLeave={e=>{
-      e.currentTarget.style.transform="";
-      e.currentTarget.style.boxShadow="0 10px 26px rgba(0,0,0,.58), inset 0 1px 0 rgba(255,255,255,.08)";
-      e.currentTarget.style.borderColor="rgba(74,222,128,.28)";
-    }}
-    onMouseDown={e=>{
-      e.currentTarget.style.transform="scale(.98)";
-    }}
-    onMouseUp={e=>{
-      e.currentTarget.style.transform="translateY(-2px) scale(1.02)";
-    }}
-  >
-    <div style={{
-      position:"absolute",
-      inset:0,
-      background:"linear-gradient(120deg,transparent,rgba(255,255,255,.06),transparent)",
-      transform:"translateX(-100%)",
-      animation:"shineMove 4s linear infinite"
-    }}/>
+  {/* BERSERKER RAMPAGE ATTACK */}
+  {(()=>{
+    const selSq=gs.selectedSquare;
+    const selPiece=selSq?gs.board[selSq.row][selSq.col]:null;
+    const selectedIsBerserker=!!selPiece&&selPiece.type==="berserker"&&selPiece.color===myColor;
+    const isMyTurn=gs.currentTurn===myColor&&gs.status==="playing";
+    if(!isMyTurn||!selectedIsBerserker)return null;
+    const rampageUsed=!!selPiece?.berserkerRampageUsed;
+    const rampageMode=gs.specialMode==="berserker-rampage-mode";
+    return(
+      <button onClick={()=>{if(rampageUsed)return;handleBerserkerRampage16();}}
+        style={{width:"100%",minHeight:58,padding:"12px 14px",borderRadius:16,cursor:rampageUsed?"default":"pointer",
+          background:rampageUsed?"linear-gradient(135deg, rgba(42,18,18,0.9), rgba(90,10,10,0.95))":rampageMode?"linear-gradient(135deg, rgba(255,40,40,0.75), rgba(90,0,0,0.85))":"linear-gradient(135deg, rgba(200,40,40,0.65), rgba(70,8,8,0.75))",
+          border:`1px solid ${rampageUsed?"rgba(120,45,45,.20)":rampageMode?"rgba(255,60,60,.75)":"rgba(255,90,90,.42)"}`,
+          display:"flex",alignItems:"center",gap:12,transition:"all .2s",opacity:rampageUsed?.62:1,position:"relative",overflow:"hidden"}}>
+        <span style={{width:34,height:34,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,background:rampageUsed?"rgba(255,255,255,.05)":"rgba(255,40,40,.16)",border:"1px solid rgba(255,120,120,.14)",flexShrink:0}}>💥</span>
+        <div style={{textAlign:"left",minWidth:0}}>
+          <p style={{margin:0,fontSize:11,fontWeight:800,letterSpacing:".12em",textTransform:"uppercase",color:rampageUsed?"rgba(170,70,70,.42)":rampageMode?"#ff6b6b":"#ff9b9b"}}>
+            {rampageUsed?"Rampage Used":rampageMode?"Rampage Active":"Rampage Attack"}
+          </p>
+          <p style={{margin:"3px 0 0",fontSize:10,color:rampageUsed?"rgba(170,70,70,.28)":"rgba(255,150,150,.50)"}}>
+            {rampageUsed?"One-time power spent":"Cleave through 2 enemies in a line"}
+          </p>
+        </div>
+      </button>
+    );
+  })()}
 
-    <span style={{
-      width:28,
-      height:28,
-      borderRadius:10,
-      display:"flex",
-      alignItems:"center",
-      justifyContent:"center",
-      background:"linear-gradient(145deg,#102015,#050505)",
-      border:"1px solid rgba(74,222,128,.24)",
-      boxShadow:"inset 0 1px 0 rgba(255,255,255,.10)"
-    }}>
-      📜
-    </span>
 
-    <span style={{
-      position:"relative",
-      zIndex:2,
-      textShadow:"0 2px 12px rgba(74,222,128,.25)"
-    }}>
-      Game Rules
-    </span>
-  </button>
-
-  {/* QUIT GAME */}
-  <button
-    onClick={()=>setShowQuitConfirm(true)}
-    style={{
-      width:"100%",
-      height:54,
-      position:"relative",
-      overflow:"hidden",
-      background:"linear-gradient(145deg,#140707 0%,#050505 45%,#1b0909 100%)",
-      color:"#ffffff",
-      border:"1px solid rgba(248,113,113,.24)",
-      borderRadius:16,
-      fontSize:13,
-      fontWeight:800,
-      cursor:"pointer",
-      letterSpacing:".14em",
-      textTransform:"uppercase",
-      fontFamily:"'Cinzel',Georgia,serif",
-      transition:"all .22s ease",
-      boxShadow:"0 10px 26px rgba(0,0,0,.58), inset 0 1px 0 rgba(255,255,255,.08)",
-      display:"flex",
-      alignItems:"center",
-      justifyContent:"center",
-      gap:10
-    }}
-    onMouseEnter={e=>{
-      e.currentTarget.style.transform="translateY(-2px) scale(1.02)";
-      e.currentTarget.style.boxShadow="0 0 24px rgba(248,113,113,.20),0 16px 34px rgba(0,0,0,.72), inset 0 1px 0 rgba(255,255,255,.12)";
-      e.currentTarget.style.borderColor="rgba(248,113,113,.55)";
-    }}
-    onMouseLeave={e=>{
-      e.currentTarget.style.transform="";
-      e.currentTarget.style.boxShadow="0 10px 26px rgba(0,0,0,.58), inset 0 1px 0 rgba(255,255,255,.08)";
-      e.currentTarget.style.borderColor="rgba(248,113,113,.24)";
-    }}
-    onMouseDown={e=>{
-      e.currentTarget.style.transform="scale(.98)";
-    }}
-    onMouseUp={e=>{
-      e.currentTarget.style.transform="translateY(-2px) scale(1.02)";
-    }}
-  >
-    <div style={{
-      position:"absolute",
-      inset:0,
-      background:"linear-gradient(120deg,transparent,rgba(255,255,255,.05),transparent)",
-      transform:"translateX(-100%)",
-      animation:"shineMove 4s linear infinite"
-    }}/>
-
-    <span style={{
-      width:28,
-      height:28,
-      borderRadius:10,
-      display:"flex",
-      alignItems:"center",
-      justifyContent:"center",
-      background:"linear-gradient(145deg,#220909,#050505)",
-      border:"1px solid rgba(248,113,113,.22)",
-      boxShadow:"inset 0 1px 0 rgba(255,255,255,.10)"
-    }}>
-      ⚔️
-    </span>
-
-    <span style={{
-      position:"relative",
-      zIndex:2,
-      textShadow:"0 2px 12px rgba(248,113,113,.22)"
-    }}>
-      Quit Game
-    </span>
-  </button>
 </div>
         </div>
 
@@ -1381,6 +1373,10 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
                     const isAxeT=gs.specialMode==="executioner-axe-swing"&&gs.pendingAxeSquare&&getAxeSwingSquares16(gs.board,gs.pendingAxeSquare.row,gs.pendingAxeSquare.col,myColor).some(s=>sq16Eq(s,sq));
                     const isThiefT=gs.specialMode==="thief-steal-jump"&&gs.specialData?.pieceSq&&getThiefStealTargets16(gs.board,gs.specialData.pieceSq.row,gs.specialData.pieceSq.col,myColor).some(s=>sq16Eq(s,sq));
                     const isSuper=gs.superMoveMode&&gs.superMoves.some(m=>sq16Eq(m,sq));
+                    const isCastleMove=gs.castleMoves.some(m=>sq16Eq(m,sq));
+                    const rampTargets=(gs.specialMode==="berserker-rampage-mode"?gs.specialData?.targets:null) as {mid:Square16;far:Square16}[]|null;
+                    const isRampFar=!!rampTargets&&rampTargets.some(t=>sq16Eq(t.far,sq));
+                    const isRampMid=!!rampTargets&&rampTargets.some(t=>sq16Eq(t.mid,sq));
                     const baseBg=isLight?"#cdb088":"#553618";
                     let ov="";
                     if(isSel)ov="rgba(212,168,67,.55)";
@@ -1388,9 +1384,13 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
                     else if(isGreat)ov="rgba(255,215,0,.22)";
                     else if(isRisky)ov="rgba(255,60,60,.22)";
                     else if(isLF||isLT)ov="rgba(212,168,67,.2)";
+                    else if(isCastleMove)ov="rgba(80,160,255,.18)";
                     else if(isAxeT)ov="rgba(255,80,0,.45)";
                     else if(isThiefT)ov="rgba(200,40,140,.4)";
+                    else if(isRampFar)ov="rgba(255,20,20,.5)";
+                    else if(isRampMid)ov="rgba(255,90,20,.35)";
                     if(gs.superMoveMode&&!isSel&&!isSuper)ov=ov||"rgba(0,0,0,.1)";
+                    if(gs.specialMode==="berserker-rampage-mode"&&!isSel&&!isRampFar&&!isRampMid)ov=ov||"rgba(0,0,0,.1)";
                     return(
                       <div key={`${row}-${col}`} className="sq16" onClick={()=>handleClick(row,col)} style={{width:sqSize,height:sqSize,background:baseBg}}>
                         <div style={{position:"absolute",inset:0,zIndex:0,pointerEvents:"none",background:isLight?"linear-gradient(135deg,rgba(255,255,255,.1) 0%,transparent 55%)":"linear-gradient(135deg,rgba(255,255,255,.04) 0%,rgba(0,0,0,.2) 100%)"}}/>
@@ -1400,9 +1400,12 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
                         {isValid&&!piece&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:sqSize*.28,height:sqSize*.28,borderRadius:"50%",background:"rgba(212,168,67,.68)",boxShadow:"0 0 12px rgba(212,168,67,.5)",animation:"dotPop .14s ease both",pointerEvents:"none",zIndex:4}}/>}
                         {isValid&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"2px solid rgba(212,168,67,.82)",borderRadius:3,pointerEvents:"none"}}/>}
                         {isAxeT&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"2px solid rgba(255,80,0,.85)",borderRadius:3,pointerEvents:"none"}}/>}
+                        {isCastleMove&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"2px dashed rgba(80,160,255,.9)",borderRadius:3,pointerEvents:"none"}}/>}
                         {isThiefT&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"2px solid rgba(200,40,140,.9)",borderRadius:3,pointerEvents:"none"}}/>}
                         {isSuper&&!piece&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:sqSize*.3,height:sqSize*.3,borderRadius:"50%",background:"rgba(255,140,0,.82)",boxShadow:"0 0 14px rgba(255,140,0,.7)",animation:"dotPop .14s ease both",pointerEvents:"none",zIndex:4}}/>}
                         {isSuper&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"2px solid rgba(255,140,0,.9)",borderRadius:3,boxShadow:"inset 0 0 8px rgba(255,140,0,.3)",pointerEvents:"none"}}/>}
+                        {isRampFar&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"2px solid rgba(255,20,20,.95)",borderRadius:3,boxShadow:"inset 0 0 8px rgba(255,20,20,.35)",pointerEvents:"none"}}/>}
+                        {isRampMid&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"2px dashed rgba(255,90,20,.85)",borderRadius:3,pointerEvents:"none"}}/>}
                         {piece&&<PieceImg piece={piece} sqSize={sqSize} isAnim={isAnim} isGreat={isGreat} isRisky={isRisky}/>}
                       </div>
                     );
@@ -1423,24 +1426,26 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
             <div style={{height:isMobile?200:240}}>
               <ChatPanel myColor={myColor} messages={chat} onSend={sendChat}/>
             </div>
+
+            {/* Pass turn — unlimited */}
+            <ActionButton16
+              icon="⏭️"
+              title={gs.currentTurn===myColor?"Pass Turn":"Opponent's Turn"}
+              disabled={gs.currentTurn!==myColor||gs.status!=="playing"}
+              onClick={()=>{
+                if(gs.currentTurn!==myColor||gs.status!=="playing")return;
+                const ns=advanceTurn16(cloneState16(gsRef.current));
+                setGs(ns);socket?.emit("game:move",{roomId,newState:ns});snd("click");
+              }}
+            />
+
             <GuidePanel16 myColor={myColor} gs={gs}/>
-             {/* Pass turn — unlimited */}
-            <button onClick={()=>{
-              if(gs.currentTurn!==myColor||gs.status!=="playing")return;
-              const ns=advanceTurn16(cloneState16(gsRef.current));
-              setGs(ns);socket?.emit("game:move",{roomId,newState:ns});snd("click");
-            }} style={{width:"100%",minHeight:46,padding:"10px 13px",borderRadius:13,
-              background:gs.currentTurn===myColor?"linear-gradient(135deg,rgba(60,120,255,.28),rgba(30,30,100,.45))":"rgba(4,10,28,.65)",
-              border:`1px solid ${gs.currentTurn===myColor?"rgba(120,160,255,.45)":"rgba(255,255,255,.08)"}`,
-              color:gs.currentTurn===myColor?"#b0c8ff":"rgba(200,200,220,.3)",
-              fontSize:11,cursor:gs.currentTurn===myColor?"pointer":"default",
-              fontWeight:800,letterSpacing:".1em",textTransform:"uppercase",
-              fontFamily:"'Cinzel',Georgia,serif",transition:"all .2s",
-              display:"flex",alignItems:"center",justifyContent:"center",gap:8,
-              boxShadow:gs.currentTurn===myColor?"0 0 20px rgba(80,120,255,.2),inset 0 1px 0 rgba(255,255,255,.08)":"none"}}>
-              <span style={{fontSize:15}}>⏭️</span>
-              <span>{gs.currentTurn===myColor?"Pass Turn":"Opponent's Turn"}</span>
-            </button>
+
+            {/* GAME RULES */}
+            <ActionButton16 icon="📜" title="Game Rules" onClick={()=>setShowRules(true)}/>
+
+            {/* QUIT GAME */}
+            <ActionButton16 icon="⚔️" title="Quit Game" onClick={()=>setShowQuitConfirm(true)}/>
           </div>
 
           {/* ── OVERLAYS ── */}
@@ -1461,6 +1466,7 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
   }}>
     <div
       className="rules-scroll"
+      data-lenis-prevent
       style={{
         width:"min(720px,96vw)",
         maxHeight:"88vh",
@@ -1573,7 +1579,8 @@ function ChatPanel({myColor,messages,onSend}:{myColor:PlayerColor16;messages:Cha
           ["⚗️","Ethereal Pieces","Tricksters, Wizards, Sorceresses, Conjurers & Warlocks are ethereal — they cannot kill humans. Only a Wizard or Sorceress can kill a Wizard or Sorceress; Conjurers and Warlocks can kill other ethereals but never a Wizard or Sorceress."],
           ["🗝️","Thief","Jumps over anyone (triple jump) ONCE to steal any piece — the Thief ends up occupying the square it stole, and the stolen piece disappears."],
           ["🃏","Trickster","Moves like a Queen. Can also teleport ANY piece — friend or foe — to any empty square (a reposition, not a kill), unlimited uses. WARNING: once Trickster is its owner's LAST piece, the opponent has 10 rounds to kill it — fail and the whole board resets to the start!"],
-          ["✨","Conjurer","Conjures 1 dead allied piece back onto any empty square."],
+          ["✨","Conjurer","Conjures 1 dead allied piece back onto any empty square. Also holds a separate, one-time Shadow Spell that summons a hidden Berserker onto a free square directly in front of itself."],
+          ["😈","Berserker","A hidden special unit — not part of the starting formation. Summoned once by the Conjurer's Shadow Spell. Moves like a Queen (any direction, unlimited distance) and is the sole exception to the mortal/immortal combat rule: it can kill BOTH mortal and immortal/ethereal pieces. Immortal pieces cannot kill it back — only mortals or monsters can. Its one-time Rampage attack cleaves through two adjacent, in-line enemies in a single strike."],
           ["⛓️","Warlock","Must move first — right after, you may cast Bind to freeze ALL enemy pieces for 1 full round (they skip their next turn). Unlimited uses."],
           ["🔮","Sorceress Spells","3 spells total: 😴 Sleep any piece for 3 rounds / 🌀 Teleport any piece anywhere / ⭐ Wish (dice roll — above 5 succeeds, below 5 loses turn). Sleep and Teleport are guaranteed; only the Wish requires the dice roll."],
           ["🧙","Wizard","Ethereal. Teleports any piece by touch. Sacrifices himself to let the King morph into any character."],

@@ -2,7 +2,7 @@ export type PieceType16 =
   | "mystic-king" | "super-queen" | "wizard" | "sorceress" | "conjurer" | "warlock"
   | "trickster" | "dragon" | "gargoyle" | "thief" | "super-knight" | "elvin-archer"
   | "executioner" | "assassin" | "cavalier" | "mage" | "paladin"
-  | "archer" | "aerobat-assassin";
+  | "archer" | "aerobat-assassin" | "berserker";
 
 export type TriColor = "white" | "black" | "grey";
 export type TriBoardId = "A" | "B" | "C" | "T";
@@ -29,6 +29,13 @@ export interface Piece16 {
   tricksterStealUsed: boolean;
   tricksterMovesCount: number;
   conjurerSpellsLeft: number;
+  // Conjurer's one-time Shadow Spell (summons the Berserker) — wholly
+  // separate from conjurerSpellsLeft (the revive spell's charge count).
+  // Matches lib/game/rules-16x16.ts's Piece16 exactly.
+  conjurerShadowSpellUsed: boolean;
+  // Berserker — one-time crowd/rampage attack (cleaves through 2 adjacent
+  // aligned enemies in a single strike, same board only).
+  berserkerRampageUsed: boolean;
   warlockBindUsed: boolean;
   boundRoundsLeft: number;
 }
@@ -51,7 +58,8 @@ export type SpecialMode =
   | "super-queen-second-move"
   | "conjurer-revive-select"
   | "thief-steal-select"
-  | "trickster-steal-select";
+  | "trickster-steal-select"
+  | "berserker-rampage-mode";
 
 export interface TriGameState16 {
   boards: Record<TriBoardId, Board16>;
@@ -156,6 +164,8 @@ function mkPiece(type: PieceType16, color: TriColor, id: string): Piece16 {
     tricksterStealUsed: false,
     tricksterMovesCount: 0,
     conjurerSpellsLeft: 1,
+    conjurerShadowSpellUsed: false,
+    berserkerRampageUsed: false,
     warlockBindUsed: false,
     boundRoundsLeft: 0,
   };
@@ -188,6 +198,7 @@ const NAME_WB: Record<PieceType16, [string, string]> = {
   "paladin": ["Paladin - White", "Paladin - Black"],
   "archer": ["Archer White", "Archer Black"],
   "thief": ["Thief White", "Thief Black"],
+  "berserker": ["Beserker-White", "Beserker-Black"],
 };
 
 const NAME_GREY: Record<PieceType16, string> = {
@@ -202,6 +213,7 @@ const NAME_GREY: Record<PieceType16, string> = {
   "cavalier": "Cavalier Prince Gray", "mage": "Mage-Princess Gray", "paladin": "Paladin Gray",
   // Grey Thief has its own (typo'd-on-disk) file, "Theif-Grey.png".
   "archer": "Archer Gray", "thief": "Theif-Grey",
+  "berserker": "Beserker-Gray",
 };
 
 export function pieceImagePathTri16(p: Piece16): string {
@@ -421,6 +433,16 @@ export function getRawMovesTri16(board: Board16, r: number, c: number, boardId: 
       m = slide(board, r, c, ALL8, boardId, color);
       break;
 
+    case "berserker":
+      // Unlimited slide, any direction, on whichever board it currently
+      // stands on (kingdom or the Tri Gate) — same architecture as every
+      // other sliding piece here. Non-ethereal, so `slide` already lets it
+      // capture both mortal AND ethereal targets; the wizard/sorceress
+      // kill-immunity is separately waived for this type below — the
+      // Berserker's unique combat exception, matching lib/game/rules-16x16.ts.
+      m = slide(board, r, c, ALL8, boardId, color);
+      break;
+
     case "super-knight":
       m = lj(board, r, c, boardId, color);
       break;
@@ -468,9 +490,11 @@ export function getRawMovesTri16(board: Board16, r: number, c: number, boardId: 
   }
 
   // Only a Wizard or Sorceress may kill a Wizard or Sorceress — every other
-  // piece treats an enemy Wizard/Sorceress square as untouchable. Matches
+  // piece treats an enemy Wizard/Sorceress square as untouchable. The
+  // Berserker is the sole exception — its unique combat rule lets it kill
+  // BOTH mortal and immortal/ethereal pieces without restriction. Matches
   // the post-switch filter in lib/game/rules-16x16.ts's getRawMoves16.
-  if (type !== "wizard" && type !== "sorceress") {
+  if (type !== "wizard" && type !== "sorceress" && type !== "berserker") {
     m = m.filter(s => {
       const t = board[s.row][s.col];
       return !(t && (t.type === "wizard" || t.type === "sorceress"));
@@ -740,6 +764,159 @@ export function applyConjurerReviveTri16(
   return nb;
 }
 
+// ─── CONJURER — one-time Shadow Spell (summons the Berserker) ────────────────
+// Finds the square directly in front of the Conjurer (toward that kingdom's
+// connector / the Tri Gate). If that square is occupied, off the board, or
+// the Conjurer isn't standing on its own kingdom board (no well-defined
+// "front" there), expands outward ring by ring on the SAME board the
+// Conjurer is currently on to find the nearest empty square — matches
+// lib/game/rules-16x16.ts's findShadowSummonSquare16, adapted for the
+// per-kingdom orientation and triangular Tri Gate bounds.
+export function findShadowSummonSquareTri16(
+  boards: Record<TriBoardId, Board16>, conjurerSq: TriSquare, color: TriColor
+): TriSquare | null {
+  const boardId = conjurerSq.boardId;
+  const board = boards[boardId];
+
+  if (CONNECTOR_BOARD[color] === boardId) {
+    // "Front" = toward that kingdom's connector row (white sits at row 0,
+    // connector at row KINGDOM_SIZE-1, so front is +row; black/grey sit at
+    // row KINGDOM_SIZE-1, connector at row 0, so front is -row).
+    const dr = color === "white" ? 1 : -1;
+    const front = { row: conjurerSq.row + dr, col: conjurerSq.col };
+    if (inBoundsFor(boardId, front.row, front.col) && !board[front.row][front.col]) {
+      return { boardId, row: front.row, col: front.col };
+    }
+  }
+
+  const start = { row: conjurerSq.row, col: conjurerSq.col };
+  const maxRadius = Math.max(TRI_ROWS, TRI_COLS, KINGDOM_SIZE);
+  for (let radius = 1; radius <= maxRadius; radius++) {
+    const candidates: Square[] = [];
+    for (let dR = -radius; dR <= radius; dR++) {
+      for (let dC = -radius; dC <= radius; dC++) {
+        if (Math.max(Math.abs(dR), Math.abs(dC)) !== radius) continue;
+        const rr = start.row + dR, cc = start.col + dC;
+        if (inBoundsFor(boardId, rr, cc) && !board[rr][cc]) candidates.push({ row: rr, col: cc });
+      }
+    }
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => {
+        const da = Math.abs(a.row - start.row) + Math.abs(a.col - start.col);
+        const db = Math.abs(b.row - start.row) + Math.abs(b.col - start.col);
+        if (da !== db) return da - db;
+        if (a.row !== b.row) return a.row - b.row;
+        return a.col - b.col;
+      });
+      return { boardId, row: candidates[0].row, col: candidates[0].col };
+    }
+  }
+  return null;
+}
+
+// Summons the Berserker as a brand-new real game piece on the Conjurer's
+// current board — never touches or removes any existing piece. Consumes the
+// Conjurer's one-time Shadow Spell charge only on success.
+export function applyShadowSummonTri16(
+  boards: Record<TriBoardId, Board16>, conjurerSq: TriSquare
+): Record<TriBoardId, Board16> {
+  const nb = cloneBoardsTri16(boards);
+  const conjBoard = nb[conjurerSq.boardId];
+  const conjurer = conjBoard[conjurerSq.row][conjurerSq.col];
+  if (!conjurer || conjurer.type !== "conjurer" || conjurer.conjurerShadowSpellUsed) return nb;
+  const dest = findShadowSummonSquareTri16(nb, conjurerSq, conjurer.color);
+  if (!dest) return nb;
+  nb[dest.boardId][dest.row][dest.col] = mkPiece("berserker", conjurer.color, `berserker-${conjurer.color}-${Date.now()}`);
+  conjBoard[conjurerSq.row][conjurerSq.col] = { ...conjurer, conjurerShadowSpellUsed: true };
+  return nb;
+}
+
+// ─── BERSERKER — special crowd/rampage attack (one-time) ─────────────────────
+// Cleaves through exactly 2 adjacent, in-line enemy pieces in a single
+// attack on the SAME board the Berserker is standing on: the square
+// immediately next to it ("mid") and the square directly beyond it on the
+// same line ("far") must both be occupied by enemies. Both are eliminated
+// and the Berserker ends up on "far". Wholly separate from
+// getRawMovesTri16/getLegalMovesTri16, exactly like the Paladin's one-time
+// Super Move, so it never appears as a normal move. Matches
+// lib/game/rules-16x16.ts's getBerserkerRampageTargets16 family.
+export function getBerserkerRampageTargetsTri16(
+  board: Board16, r: number, c: number, boardId: TriBoardId, color: TriColor
+): { mid: Square; far: Square }[] {
+  const p = board[r][c];
+  if (!p || p.type !== "berserker" || p.berserkerRampageUsed || p.sleepRoundsLeft > 0 || p.boundRoundsLeft > 0) return [];
+  const out: { mid: Square; far: Square }[] = [];
+  for (const [dr, dc] of ALL8) {
+    const midR = r + dr, midC = c + dc, farR = r + dr * 2, farC = c + dc * 2;
+    if (!inBoundsFor(boardId, midR, midC) || !inBoundsFor(boardId, farR, farC)) continue;
+    const mid = board[midR][midC], far = board[farR][farC];
+    if (mid && far && mid.color !== color && far.color !== color) {
+      out.push({ mid: { row: midR, col: midC }, far: { row: farR, col: farC } });
+    }
+  }
+  return out;
+}
+
+export function getLegalBerserkerRampageTargetsTri16(
+  state: TriGameState16, from: TriSquare
+): { mid: TriSquare; far: TriSquare }[] {
+  const board = state.boards[from.boardId];
+  const piece = board[from.row][from.col];
+  if (!piece || piece.color !== state.currentTurn) return [];
+  const raw = getBerserkerRampageTargetsTri16(board, from.row, from.col, from.boardId, piece.color);
+  return raw
+    .map(t => ({
+      mid: { boardId: from.boardId, row: t.mid.row, col: t.mid.col },
+      far: { boardId: from.boardId, row: t.far.row, col: t.far.col },
+    }))
+    .filter(({ mid, far }) => {
+      const clone = cloneBoardsTri16(state.boards);
+      const b = clone[from.boardId];
+      b[far.row][far.col] = b[from.row][from.col];
+      b[from.row][from.col] = null;
+      b[mid.row][mid.col] = null;
+      return !isKingInCheckTri16(clone, piece.color, state.turnOrder);
+    });
+}
+
+export function applyBerserkerRampageTri16(
+  state: TriGameState16, from: TriSquare, mid: TriSquare, far: TriSquare
+): TriGameState16 {
+  const ns = cloneTriGameState16(state);
+  const board = ns.boards[from.boardId];
+  const piece = board[from.row][from.col];
+  if (!piece || piece.type !== "berserker") return advanceTurnTri16(ns);
+
+  const midTarget = board[mid.row][mid.col];
+  const farTarget = board[far.row][far.col];
+  if (midTarget) ns.capturedBy[piece.color].push(midTarget);
+  if (farTarget) ns.capturedBy[piece.color].push(farTarget);
+  board[mid.row][mid.col] = null;
+  board[far.row][far.col] = { ...piece, berserkerRampageUsed: true, hasMoved: true };
+  board[from.row][from.col] = null;
+
+  ns.lastMove = { from, to: far };
+  ns.selectedSquare = null; ns.validMoves = [];
+  ns.superMoves = []; ns.superMoveMode = false; ns.castleMoves = [];
+  ns.specialMode = null; ns.specialData = null;
+
+  const remainingPlayers = getRemainingPlayersTri16(ns.boards, ns.turnOrder);
+  const newlyEliminated = ALL_COLORS.filter(p => !remainingPlayers.includes(p) && !ns.eliminatedPlayers.includes(p));
+  ns.eliminatedPlayers = ALL_COLORS.filter(p => !remainingPlayers.includes(p));
+  if (newlyEliminated.length > 0) ns.justEliminated = newlyEliminated[0];
+
+  if (remainingPlayers.length === 1) {
+    ns.turnOrder = remainingPlayers;
+    ns.status = "finished";
+    ns.winner = remainingPlayers[0];
+    ns.currentTurn = remainingPlayers[0];
+    return ns;
+  }
+  ns.turnOrder = remainingPlayers;
+
+  return advanceTurnTri16(ns);
+}
+
 // Warlock: binds every enemy piece across the ENTIRE Tri battlefield (all
 // three kingdoms plus the Tri Gate) for 1 round — matches the classic
 // 2-player version binding the entire (single) board, scaled up to the
@@ -855,7 +1032,7 @@ function tickSleepAndBindTri16(boards: Record<TriBoardId, Board16>, color: TriCo
 // ─── MOVE QUALITY ────────────────────────────────────────────────────────────
 const PIECE_VALUE: Record<PieceType16, number> = {
   "mystic-king": 10, "super-queen": 9, "dragon": 8, "gargoyle": 7, "sorceress": 7,
-  "wizard": 6, "warlock": 6, "conjurer": 6, "trickster": 6, "thief": 5,
+  "wizard": 6, "warlock": 6, "conjurer": 6, "trickster": 6, "thief": 5, "berserker": 8,
   "assassin": 6, "elvin-archer": 5, "aerobat-assassin": 5, "super-knight": 5,
   "executioner": 5, "cavalier": 4, "mage": 4, "paladin": 2, "archer": 4,
 };

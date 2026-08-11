@@ -12,6 +12,7 @@ import {
   applyMageSacrificeX16, applyAxeSwingX16, getAxeSwingSquaresX16,
   applyWarlockBindX16, applyThiefStealX16, getThiefStealTargetsX16,
   applyTricksterTeleportX16, applyConjurerReviveX16,
+  applyShadowSummonX16, getLegalBerserkerRampageTargetsX16, applyBerserkerRampageX16,
   rollWishDiceX16,
   SIZE, inPlayAreaX16, CENTER_LO, CENTER_HI,
 } from "@/lib/game/rules-x16x16";
@@ -57,6 +58,7 @@ const EMOJI: Record<PieceTypeX16, string> = {
   "sorceress": "🔮", "conjurer": "✨", "warlock": "🌑", "trickster": "🃏", "thief": "🗝️",
   "super-knight": "⚔️", "assassin": "🗡️", "executioner": "🪓", "cavalier": "🏇",
   "mage": "💫", "elvin-archer": "🏹", "paladin": "🛡️", "archer": "🎯", "aerobat-assassin": "🦅",
+  "berserker": "😈",
 };
 const PIECE_GUIDE_INFO: Record<PieceTypeX16, { name: string; move: string; special: string }> = {
   "mystic-king": { name: "Mystic King", move: "Moves in an L-shape, plus 1 square in any direction", special: "Wizard Morph — the Wizard sacrifices itself so the King can be granted one last wish" },
@@ -65,7 +67,7 @@ const PIECE_GUIDE_INFO: Record<PieceTypeX16, { name: string; move: string; speci
   "gargoyle": { name: "Gargoyle", move: "Wing and Tail Attack: 1 square in any direction", special: "Fire Attack: 2 squares in any direction" },
   "wizard": { name: "Wizard", move: "Moves in any direction (ethereal — cannot kill non-ethereal pieces)", special: "Teleports any piece by touching it" },
   "sorceress": { name: "Sorceress", move: "Moves in any direction (ethereal — cannot kill non-ethereal pieces)", special: "Casts one of three spells: Sleep for 3 rounds, Teleport, or Wish Dice" },
-  "conjurer": { name: "Conjurer", move: "Moves in any direction, unlimited distance (ethereal)", special: "Brings back 1 of its own dead pieces" },
+  "conjurer": { name: "Conjurer", move: "Moves in any direction, unlimited distance (ethereal)", special: "Brings back 1 of its own dead pieces. Also holds a separate, one-time Shadow Spell that summons a hidden Berserker onto a free square directly in front of itself." },
   "warlock": { name: "Warlock", move: "Moves in any direction, unlimited distance (ethereal)", special: "After moving, binds all enemy pieces in place for 1 round" },
   "trickster": { name: "Trickster", move: "Moves in any direction, unlimited distance (ethereal), like a Queen", special: "Teleports any character to a new position (a reposition, not a kill). If it becomes its owner's last remaining piece, the others have 10 rounds to capture it or the board resets" },
   "thief": { name: "Thief", move: "Moves in any direction, unlimited distance", special: "Jumps over another piece once to steal an enemy piece, ending up on the square it stole" },
@@ -78,6 +80,7 @@ const PIECE_GUIDE_INFO: Record<PieceTypeX16, { name: string; move: string; speci
   "mage": { name: "Mage/Princess", move: "Moves in any direction, unlimited distance", special: "Sacrifices itself to restore the Super Queen's full power" },
   "paladin": { name: "Paladin", move: "Normal Movement: 1 square in any direction", special: "Super Move: a one-time 3-square surprise attack in any direction; after use, the Paladin returns to normal 1-square movement. Reverse Castle: may swap places with an adjacent ally to bring it forward in defense" },
   "archer": { name: "Archer", move: "Moves in any direction, unlimited distance", special: "Ranged arrow attacks — no special ability" },
+  "berserker": { name: "Berserker", move: "Special summoned character — moves in any direction, unlimited distance, once summoned by the Conjurer", special: "Can kill BOTH mortal and immortal/ethereal characters (immortals cannot kill it back). One-time Rampage attack cleaves through 2 adjacent aligned enemies in a single strike" },
 };
 const GUIDE_ICON_FILE: Partial<Record<PieceTypeX16, string>> = {
   "mystic-king": "Mystic King", "super-queen": "Super Queen", "dragon": "Dragon",
@@ -85,7 +88,7 @@ const GUIDE_ICON_FILE: Partial<Record<PieceTypeX16, string>> = {
   "conjurer": "Conjurer", "warlock": "Warlock", "trickster": "Trickster", "thief": "Thief",
   "super-knight": "Super Knight", "elvin-archer": "Elven Archer", "executioner": "Executioner",
   "assassin": "Assassin", "cavalier": "Cavalier Prince", "mage": "Mage-Princess", "archer": "Archer",
-  "aerobat-assassin": "Acrobat Assassin", "paladin": "Paladin",
+  "aerobat-assassin": "Acrobat Assassin", "paladin": "Paladin", "berserker": "Beserker",
 };
 function RulePieceIcon({ pieceKey }: { pieceKey: PieceTypeX16 }) {
   const [failed, setFailed] = useState(false);
@@ -229,33 +232,53 @@ function CompactPlayerPill({ color, name, isMe, isActive, isElim }: {
 }
 
 // ─── CONTROL CARD (right panel — icon badge + title + subtitle) ────────────
-function ControlCard({ icon, title, subtitle, accent, onClick, disabled, isMobile }: {
-  icon: string; title: string; subtitle: string; accent: string; onClick: () => void; disabled?: boolean; isMobile: boolean;
+// `standard` renders the uniform "shared style spec" look used by the four
+// always-present controls (Pass Turn / Battle Guide / Game Rules / Quit
+// Game); conditional ability-trigger cards (Super Attack, Rampage) keep
+// their existing per-action `accent` styling by omitting it.
+function ControlCard({ icon, title, subtitle, accent, onClick, disabled, isMobile, standard }: {
+  icon: string; title: string; subtitle: string; accent: string; onClick: () => void; disabled?: boolean; isMobile: boolean; standard?: boolean;
 }) {
+  const iconBg = standard ? "rgba(212,168,67,.18)" : `${accent}26`;
+  const iconBorder = standard ? "rgba(212,168,67,.4)" : `${accent}60`;
+  const titleColor = standard ? "#ffffff" : accent;
+  const subtitleColor = standard ? "rgba(255,255,255,.55)" : "rgba(220,220,230,.55)";
   return (
-    <button className="x16-btn" onClick={onClick} disabled={disabled}
+    <button className={standard ? "x16-btn x16-btn-std" : "x16-btn"} onClick={onClick} disabled={disabled}
       style={{
         display: "flex", alignItems: "flex-start", gap: 12, width: isMobile ? undefined : "100%", textAlign: "left",
         padding: "13px 14px", borderRadius: 14, cursor: disabled ? "default" : "pointer", marginBottom: isMobile ? 0 : 12,
-        background: `linear-gradient(160deg,${accent}1c,${accent}0a)`, border: `1px solid ${accent}4a`, opacity: disabled ? .5 : 1,
+        ...(standard ? {} : { background: `linear-gradient(160deg,${accent}1c,${accent}0a)`, border: `1px solid ${accent}4a` }),
+        opacity: disabled ? .5 : 1,
         fontFamily: "'Cinzel',Georgia,serif",
-        boxShadow: `0 8px 20px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.08)`,
+        boxShadow: standard ? "0 8px 20px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08)" : `0 8px 20px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.08)`,
       }}>
-      <span style={{ width: 38, height: 38, borderRadius: 10, background: `${accent}26`, border: `1px solid ${accent}60`, boxShadow: `inset 0 1px 0 rgba(255,255,255,.15), 0 0 10px ${accent}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0 }}>{icon}</span>
+      <span style={{ width: 38, height: 38, borderRadius: 10, background: iconBg, border: `1px solid ${iconBorder}`, boxShadow: standard ? "inset 0 1px 0 rgba(255,255,255,.15)" : `inset 0 1px 0 rgba(255,255,255,.15), 0 0 10px ${accent}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0 }}>{icon}</span>
       {!isMobile && (
         <span style={{ minWidth: 0 }}>
-          <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: accent, letterSpacing: ".06em", textTransform: "uppercase" }}>{title}</p>
-          <p style={{ margin: "3px 0 0", fontSize: 10.5, color: "rgba(220,220,230,.55)", lineHeight: 1.4 }}>{subtitle}</p>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: titleColor, letterSpacing: ".06em", textTransform: "uppercase" }}>{title}</p>
+          <p style={{ margin: "3px 0 0", fontSize: 10.5, color: subtitleColor, lineHeight: 1.4 }}>{subtitle}</p>
         </span>
       )}
-      {isMobile && <span style={{ fontSize: 11, fontWeight: 800, color: accent, letterSpacing: ".05em", textTransform: "uppercase", alignSelf: "center" }}>{title}</span>}
+      {isMobile && <span style={{ fontSize: 11, fontWeight: 800, color: titleColor, letterSpacing: ".05em", textTransform: "uppercase", alignSelf: "center" }}>{title}</span>}
     </button>
   );
 }
 
+// Spell-card icon — same real character artwork as the Battle Guide's
+// RulePieceIcon, sized to fill the spell card's badge instead of a plain
+// emoji glyph.
+function SpellPieceIconX16({ pieceType, fallback }: { pieceType: PieceTypeX16; fallback: string }) {
+  const [failed, setFailed] = useState(false);
+  const nm = GUIDE_ICON_FILE[pieceType];
+  if (failed || !nm) return <>{fallback}</>;
+  return <img src={`/all-characters/${nm}.png`} alt={pieceType} onError={() => setFailed(true)}
+    style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }} />;
+}
+
 // ─── MODERN SPELL CARD — cleaner, more premium than the old boxy spell bar ──
-function SpellCard({ icon, title, subtitle, accent, onClick }: {
-  icon: string; title: string; subtitle: string; accent: string; onClick: () => void;
+function SpellCard({ icon, pieceType, title, subtitle, accent, onClick }: {
+  icon: string; pieceType: PieceTypeX16; title: string; subtitle: string; accent: string; onClick: () => void;
 }) {
   const [hot, setHot] = useState(false);
   return (
@@ -271,7 +294,9 @@ function SpellCard({ icon, title, subtitle, accent, onClick }: {
         border: `1px solid ${hot ? accent + "90" : accent + "38"}`,
         boxShadow: hot ? `0 16px 34px rgba(0,0,0,.55), 0 0 20px ${accent}40` : "0 8px 20px rgba(0,0,0,.4)",
       }}>
-      <span style={{ width: 42, height: 42, borderRadius: 13, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, background: `${accent}22`, border: `1px solid ${accent}55`, boxShadow: `inset 0 1px 0 rgba(255,255,255,.12)` }}>{icon}</span>
+      <span style={{ width: 42, height: 42, borderRadius: 13, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, background: `${accent}22`, border: `1px solid ${accent}55`, boxShadow: `inset 0 1px 0 rgba(255,255,255,.12)`, overflow: "hidden" }}>
+        <SpellPieceIconX16 pieceType={pieceType} fallback={icon} />
+      </span>
       <span style={{ fontSize: 11.5, fontWeight: 800, color: accent, letterSpacing: ".04em" }}>{title}</span>
       <span style={{ fontSize: 9.5, color: "rgba(230,220,200,.55)", lineHeight: 1.4 }}>{subtitle}</span>
     </button>
@@ -402,6 +427,8 @@ export default function BoardX16x16({ myColor, roomId, playerNames, onGameEnd, s
   const selPiece = selSq ? gs.board[selSq.row][selSq.col] : null;
   const selectedIsPaladin = selPiece?.type === "paladin" && selPiece.color === myColor;
   const paladinSuperUsed = selPiece?.paladanSuperUsed ?? false;
+  const selectedIsBerserker = selPiece?.type === "berserker" && selPiece.color === myColor;
+  const berserkerRampageUsed = selPiece?.berserkerRampageUsed ?? false;
 
   // ─── RESPONSIVE SIZE ────────────────────────────────────────────────────
   useEffect(() => {
@@ -492,6 +519,22 @@ export default function BoardX16x16({ myColor, roomId, playerNames, onGameEnd, s
     emit({ ...cloneStateX16(state), superMoves, superMoveMode: true, validMoves: [], castleMoves: [] });
   }, [roomId, socket]);
 
+  // ─── BERSERKER RAMPAGE (one-time crowd/cleave attack) ──────────────────
+  const handleBerserkerRampage = useCallback(() => {
+    const state = gsRef.current;
+    if (!state.selectedSquare) return;
+    const { row, col } = state.selectedSquare;
+    const piece = state.board[row][col];
+    if (!piece || piece.type !== "berserker" || piece.color !== myColor || piece.berserkerRampageUsed) return;
+    snd("select");
+    const targets = getLegalBerserkerRampageTargetsX16(state.board, row, col, state.turnOrder);
+    emit({
+      ...cloneStateX16(state), specialMode: "berserker-rampage-mode", specialData: { from: state.selectedSquare },
+      spellMessage: targets.length ? "💥 Choose a target — cleave through 2 enemies in a line" : "⚠️ No valid rampage targets right now",
+      validMoves: [], superMoves: [], superMoveMode: false, castleMoves: [],
+    });
+  }, [myColor, roomId, socket]);
+
   const handlePass = useCallback(() => {
     const state = gsRef.current;
     if (state.currentTurn !== myColor || state.status !== "playing") return;
@@ -556,6 +599,12 @@ export default function BoardX16x16({ myColor, roomId, playerNames, onGameEnd, s
       ns = { ...cloneStateX16(state), wishDiceResult: null, specialMode: "wizard-teleport-select-piece", spellMessage: "Wish granted! Move any piece anywhere." };
     } else if (action === "wish-fail") {
       ns = advanceTurnX16(cloneStateX16(state));
+    } else if (action === "shadow-summon") {
+      const conjSq = findConjurerX16(state.board, myColor);
+      if (!conjSq) return;
+      const board = applyShadowSummonX16(state.board, conjSq);
+      ns = advanceTurnX16({ ...cloneStateX16(state), board });
+      snd("spell");
     } else return;
     emit(ns);
     if (ns.status === "finished" && ns.winner) { setTimeout(() => { setShowWin(ns.winner); snd("win"); }, 300); onGameEnd?.(ns.winner); }
@@ -664,6 +713,19 @@ export default function BoardX16x16({ myColor, roomId, playerNames, onGameEnd, s
       }
       return;
     }
+    if (specialMode === "berserker-rampage-mode" && state.specialData?.from) {
+      const from: SquareX16 = state.specialData.from;
+      const targets = getLegalBerserkerRampageTargetsX16(board, from.row, from.col, state.turnOrder);
+      const match = targets.find(t => sqX16Eq(t.far, sq) || sqX16Eq(t.mid, sq));
+      if (match) {
+        const ns = applyBerserkerRampageX16(state, from, match.mid, match.far);
+        setAnimSq(sq); setTimeout(() => setAnimSq(null), 420);
+        snd("capture");
+        emit(ns);
+        if (ns.status === "finished" && ns.winner) { setTimeout(() => { setShowWin(ns.winner); snd("win"); }, 300); onGameEnd?.(ns.winner); }
+      }
+      return;
+    }
     if (specialMode === "super-queen-second-move") {
       if (selectedSquare && validMoves.some(m => sqX16Eq(m, sq))) {
         const ns2 = cloneStateX16(state);
@@ -720,6 +782,7 @@ export default function BoardX16x16({ myColor, roomId, playerNames, onGameEnd, s
   const hasWiz = !!wizSq;
   const conjSq = findConjurerX16(gs.board, myColor);
   const hasConj = conjSq ? (gs.board[conjSq.row][conjSq.col]?.conjurerSpellsLeft || 0) > 0 : false;
+  const hasShadowSpell = conjSq ? !gs.board[conjSq.row][conjSq.col]?.conjurerShadowSpellUsed : false;
   const deadPieces = gs.capturedBy[myColor].filter(p => p.type !== "mystic-king");
   let hasThief = false;
   for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (getThiefStealTargetsX16(gs.board, r, c, myColor).length > 0) hasThief = true;
@@ -738,7 +801,7 @@ export default function BoardX16x16({ myColor, roomId, playerNames, onGameEnd, s
     }
     return null;
   })();
-  const showSpellDeck = isMyTurn && (hasSorc || hasWiz || (hasConj && deadPieces.length > 0) || hasThief || hasTrickster || !!mageNextToQueen || gs.specialMode === "warlock-bind-offer" || !!gs.spellMessage || gs.superMoveMode);
+  const showSpellDeck = isMyTurn && (hasSorc || hasWiz || (hasConj && deadPieces.length > 0) || hasShadowSpell || hasThief || hasTrickster || !!mageNextToQueen || gs.specialMode === "warlock-bind-offer" || !!gs.spellMessage || gs.superMoveMode);
 
   // ─── OVERLAY DATA ───────────────────────────────────────────────────────
   const allColors: PlayerColorX16[] = ["white", "grey", "black", "golden"];
@@ -808,6 +871,11 @@ export default function BoardX16x16({ myColor, roomId, playerNames, onGameEnd, s
             const isAxeT = gs.specialMode === "executioner-axe-swing" && gs.pendingAxeSquare && getAxeSwingSquaresX16(gs.board, gs.pendingAxeSquare.row, gs.pendingAxeSquare.col, myColor).some(s => sqX16Eq(s, sq));
             const isThiefT = gs.specialMode === "thief-steal-jump" && gs.specialData?.pieceSq && getThiefStealTargetsX16(gs.board, gs.specialData.pieceSq.row, gs.specialData.pieceSq.col, myColor).some(s => sqX16Eq(s, sq));
             const isCastleMove = gs.castleMoves.some(m => sqX16Eq(m, sq));
+            const rampTargets = gs.specialMode === "berserker-rampage-mode" && gs.specialData?.from
+              ? getLegalBerserkerRampageTargetsX16(gs.board, gs.specialData.from.row, gs.specialData.from.col, gs.turnOrder)
+              : null;
+            const isRampFar = !!rampTargets && rampTargets.some(t => sqX16Eq(t.far, sq));
+            const isRampMid = !!rampTargets && rampTargets.some(t => sqX16Eq(t.mid, sq));
 
             const baseBg = isLight ? "#c9a96e" : "#4a2e1a";
             let ov = "";
@@ -817,7 +885,10 @@ export default function BoardX16x16({ myColor, roomId, playerNames, onGameEnd, s
             else if (isAxeT) ov = "rgba(255,80,0,.45)";
             else if (isThiefT) ov = "rgba(200,40,140,.4)";
             else if (isCastleMove) ov = "rgba(80,160,255,.18)";
+            else if (isRampFar) ov = "rgba(255,20,20,.5)";
+            else if (isRampMid) ov = "rgba(255,90,20,.35)";
             if (gs.superMoveMode && !isSel && !isSuper) ov = ov || "rgba(0,0,0,.08)";
+            if (gs.specialMode === "berserker-rampage-mode" && !isSel && !isRampFar && !isRampMid) ov = ov || "rgba(0,0,0,.08)";
 
             return (
               <div key={`${row}-${col}`} className="x16sq" onClick={() => handleClick(row, col)} style={{ width: sqPx, height: sqPx, background: baseBg, position: "relative" }}>
@@ -829,6 +900,8 @@ export default function BoardX16x16({ myColor, roomId, playerNames, onGameEnd, s
                 {isAxeT && piece && <div style={{ position: "absolute", inset: Math.max(2, sqPx * .06), zIndex: 4, borderRadius: 4, border: "2px solid rgba(255,80,0,.9)", pointerEvents: "none" }} />}
                 {isThiefT && piece && <div style={{ position: "absolute", inset: Math.max(2, sqPx * .06), zIndex: 4, borderRadius: 4, border: "2px solid rgba(200,40,140,.9)", pointerEvents: "none" }} />}
                 {isCastleMove && piece && <div style={{ position: "absolute", inset: Math.max(2, sqPx * .06), zIndex: 4, borderRadius: 4, border: "2px dashed rgba(80,160,255,.9)", pointerEvents: "none" }} />}
+                {isRampFar && piece && <div style={{ position: "absolute", inset: Math.max(2, sqPx * .06), zIndex: 4, borderRadius: 4, border: "2px solid rgba(255,20,20,.95)", pointerEvents: "none" }} />}
+                {isRampMid && piece && <div style={{ position: "absolute", inset: Math.max(2, sqPx * .06), zIndex: 4, borderRadius: 4, border: "2px dashed rgba(255,90,20,.85)", pointerEvents: "none" }} />}
                 {isSuper && !piece && <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: sqPx * .36, height: sqPx * .36, borderRadius: "50%", background: "rgba(255,140,0,.82)", boxShadow: "0 0 14px rgba(255,140,0,.7)", pointerEvents: "none", zIndex: 4 }} />}
                 {isSuper && piece && <div style={{ position: "absolute", inset: Math.max(2, sqPx * .06), zIndex: 4, borderRadius: 4, border: "2px solid rgba(255,140,0,.95)", pointerEvents: "none" }} />}
                 {piece && (
@@ -908,15 +981,16 @@ export default function BoardX16x16({ myColor, roomId, playerNames, onGameEnd, s
       {!gs.specialMode && gs.wishDiceResult === null && !gs.superMoveMode && (
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
           {hasSorc && <>
-            <SpellCard icon="😴" title="Sleep" subtitle={`${spellsLeft} charges left`} accent="#9090ff" onClick={() => handleSpecial("spell-sleep")} />
-            <SpellCard icon="🌀" title="Teleport" subtitle="Move any piece" accent="#d080ff" onClick={() => handleSpecial("spell-teleport")} />
-            <SpellCard icon="⭐" title="Wish" subtitle="Roll the dice" accent="#f0c040" onClick={() => handleSpecial("spell-wish")} />
+            <SpellCard icon="😴" pieceType="sorceress" title="Sleep" subtitle={`${spellsLeft} charges left`} accent="#9090ff" onClick={() => handleSpecial("spell-sleep")} />
+            <SpellCard icon="🌀" pieceType="sorceress" title="Teleport" subtitle="Move any piece" accent="#d080ff" onClick={() => handleSpecial("spell-teleport")} />
+            <SpellCard icon="⭐" pieceType="sorceress" title="Wish" subtitle="Roll the dice" accent="#f0c040" onClick={() => handleSpecial("spell-wish")} />
           </>}
-          {hasWiz && <SpellCard icon="🧙" title="Wizard Teleport" subtitle="Relocate any piece" accent="#60c0f0" onClick={() => handleSpecial("wizard-teleport")} />}
-          {hasConj && deadPieces.length > 0 && <SpellCard icon="✨" title="Conjure" subtitle="Revive a fallen piece" accent="#80ffb0" onClick={() => handleSpecial("conjurer-revive")} />}
-          {hasThief && <SpellCard icon="🗝️" title="Steal" subtitle="Triple-jump theft" accent="#e0c080" onClick={() => handleSpecial("thief-steal")} />}
-          {hasTrickster && <SpellCard icon="🃏" title="Trickster Teleport" subtitle="Reposition any piece" accent="#ff90d0" onClick={() => handleSpecial("trickster-teleport")} />}
-          {mageNextToQueen && <SpellCard icon="💫" title="Mage Sacrifice" subtitle="Restore Super Queen" accent="#ff9090" onClick={() => handleSpecial("mage-sacrifice", mageNextToQueen)} />}
+          {hasWiz && <SpellCard icon="🧙" pieceType="wizard" title="Wizard Teleport" subtitle="Relocate any piece" accent="#60c0f0" onClick={() => handleSpecial("wizard-teleport")} />}
+          {hasConj && deadPieces.length > 0 && <SpellCard icon="✨" pieceType="conjurer" title="Conjure" subtitle="Revive a fallen piece" accent="#80ffb0" onClick={() => handleSpecial("conjurer-revive")} />}
+          {hasShadowSpell && <SpellCard icon="🌑" pieceType="conjurer" title="Shadow Summon" subtitle="Summon a hidden Berserker" accent="#b060ff" onClick={() => handleSpecial("shadow-summon")} />}
+          {hasThief && <SpellCard icon="🗝️" pieceType="thief" title="Steal" subtitle="Triple-jump theft" accent="#e0c080" onClick={() => handleSpecial("thief-steal")} />}
+          {hasTrickster && <SpellCard icon="🃏" pieceType="trickster" title="Trickster Teleport" subtitle="Reposition any piece" accent="#ff90d0" onClick={() => handleSpecial("trickster-teleport")} />}
+          {mageNextToQueen && <SpellCard icon="💫" pieceType="mage" title="Mage Sacrifice" subtitle="Restore Super Queen" accent="#ff9090" onClick={() => handleSpecial("mage-sacrifice", mageNextToQueen)} />}
         </div>
       )}
       {gs.superMoveMode && <p style={{ margin: "0 0 4px", fontSize: 11, color: "#ffb347", textAlign: "center", fontWeight: 700 }}>⚔ Choose a square 3 spaces away to strike</p>}
@@ -935,20 +1009,27 @@ export default function BoardX16x16({ myColor, roomId, playerNames, onGameEnd, s
       disabled={paladinSuperUsed}
       onClick={() => { if (!paladinSuperUsed) handleSuperAttack(); }} />
   );
+  const rampageBtn = isMyTurn && selectedIsBerserker && (
+    <ControlCard isMobile={isMobile} icon="💥" accent="#ff5050"
+      title={berserkerRampageUsed ? "Rampage Used" : "Rampage Attack"}
+      subtitle={berserkerRampageUsed ? "This Berserker's one-time cleave is already spent" : "Cleave through 2 adjacent aligned enemies in one strike"}
+      disabled={berserkerRampageUsed}
+      onClick={() => { if (!berserkerRampageUsed) handleBerserkerRampage(); }} />
+  );
   const passBtn = (
-    <ControlCard isMobile={isMobile} icon="⏩" accent="#60a5fa" title="Pass Turn" subtitle="Hand the battlefield to the next kingdom"
+    <ControlCard isMobile={isMobile} icon="⏩" accent="#60a5fa" standard title="Pass Turn" subtitle="Hand the battlefield to the next kingdom"
       disabled={!isMyTurn} onClick={handlePass} />
   );
   const guideBtn = (
-    <ControlCard isMobile={isMobile} icon="📖" accent="#c084fc" title="Battle Guide" subtitle="Master every unit's powers and abilities"
+    <ControlCard isMobile={isMobile} icon="📖" accent="#c084fc" standard title="Battle Guide" subtitle="Master every unit's powers and abilities"
       onClick={() => setShowGuide(true)} />
   );
   const rulesBtn = (
-    <ControlCard isMobile={isMobile} icon="📜" accent="#4ade80" title="Game Rules" subtitle="Discover the path to becoming the last kingdom standing"
+    <ControlCard isMobile={isMobile} icon="📜" accent="#4ade80" standard title="Game Rules" subtitle="Discover the path to becoming the last kingdom standing"
       onClick={() => setShowRules(true)} />
   );
   const quitBtn = !isElim && gs.status === "playing" && (
-    <ControlCard isMobile={isMobile} icon="🚩" accent="#f87171" title="Quit Game" subtitle="Retreat and forfeit your kingdom's claim"
+    <ControlCard isMobile={isMobile} icon="🚩" accent="#f87171" standard title="Quit Game" subtitle="Retreat and forfeit your kingdom's claim"
       onClick={() => setShowQuitConfirm(true)} />
   );
 
@@ -973,6 +1054,8 @@ export default function BoardX16x16({ myColor, roomId, playerNames, onGameEnd, s
         .x16-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 26px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.12);}
         .x16-btn:active:not(:disabled){transform:translateY(0) scale(.98);}
         .x16-btn:disabled{cursor:default;}
+        .x16-btn-std{background:linear-gradient(160deg,#5c3d1f 0%,#2a1a0a 100%);border:1px solid rgba(212,168,67,.35);}
+        .x16-btn-std:hover:not(:disabled){background:linear-gradient(160deg,#6b4726 0%,#331f0d 100%);}
         .x16pi{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:88%;height:88%;object-fit:contain;pointer-events:none;filter:drop-shadow(0 3px 6px rgba(0,0,0,.9));}
         .x16-rule-card{padding:16px 18px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid rgba(212,168,67,.1);transition:border-color .2s,background .2s;display:flex;gap:16px;align-items:flex-start;}
         .x16-rule-card:hover{background:rgba(212,168,67,.05);border-color:rgba(212,168,67,.22);}
@@ -1028,6 +1111,7 @@ export default function BoardX16x16({ myColor, roomId, playerNames, onGameEnd, s
 
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", width: "100%", maxWidth: boardPx + 40 }}>
               {superAttackBtn}
+              {rampageBtn}
               {passBtn}
               {guideBtn}
               {rulesBtn}
@@ -1054,6 +1138,7 @@ export default function BoardX16x16({ myColor, roomId, playerNames, onGameEnd, s
 
               <PanelFrame title="Game Controls" isMobile={false}>
                 {superAttackBtn}
+                {rampageBtn}
                 {passBtn}
                 {guideBtn}
                 {rulesBtn}
@@ -1067,7 +1152,7 @@ export default function BoardX16x16({ myColor, roomId, playerNames, onGameEnd, s
         {/* ── BATTLE GUIDE MODAL ── */}
         {showGuide && (
           <div style={{ position: "fixed", inset: 0, zIndex: 111, background: "rgba(0,0,0,.88)", backdropFilter: "blur(16px)", display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? 14 : 24 }}>
-            <div className="x16-modal-scroll" style={{ width: isMobile ? "96vw" : "min(860px,92vw)", maxHeight: "90vh", overflowY: "auto", borderRadius: 26, padding: isMobile ? "24px 18px" : "34px 34px", background: "linear-gradient(155deg,#0e0902 0%,#1a1005 40%,#0e0902 100%)", border: "1px solid rgba(212,168,67,.22)", fontFamily: "'Cinzel',Georgia,serif" }}>
+            <div className="x16-modal-scroll" data-lenis-prevent style={{ width: isMobile ? "96vw" : "min(860px,92vw)", maxHeight: "90vh", overflowY: "auto", borderRadius: 26, padding: isMobile ? "24px 18px" : "34px 34px", background: "linear-gradient(155deg,#0e0902 0%,#1a1005 40%,#0e0902 100%)", border: "1px solid rgba(212,168,67,.22)", fontFamily: "'Cinzel',Georgia,serif" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <div>
                   <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 27, color: "#e8c96a" }}>🧭 Battle Guide</h2>
@@ -1088,7 +1173,7 @@ export default function BoardX16x16({ myColor, roomId, playerNames, onGameEnd, s
         {/* ── RULES MODAL ── */}
         {showRules && (
           <div style={{ position: "fixed", inset: 0, zIndex: 110, background: "rgba(0,0,0,.88)", backdropFilter: "blur(16px)", display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? 14 : 24 }}>
-            <div className="x16-modal-scroll" style={{ width: isMobile ? "96vw" : "min(860px,94vw)", maxHeight: "90vh", overflowY: "auto", borderRadius: 26, padding: isMobile ? "24px 18px" : "34px 34px", background: "linear-gradient(155deg,#0e0902 0%,#1a1005 40%,#0e0902 100%)", border: "1px solid rgba(212,168,67,.22)", fontFamily: "'Cinzel',Georgia,serif" }}>
+            <div className="x16-modal-scroll" data-lenis-prevent style={{ width: isMobile ? "96vw" : "min(860px,94vw)", maxHeight: "90vh", overflowY: "auto", borderRadius: 26, padding: isMobile ? "24px 18px" : "34px 34px", background: "linear-gradient(155deg,#0e0902 0%,#1a1005 40%,#0e0902 100%)", border: "1px solid rgba(212,168,67,.22)", fontFamily: "'Cinzel',Georgia,serif" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                 <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 28, color: "#e8c96a" }}>⚔️ X Board Rules</h2>
                 <button onClick={() => setShowRules(false)} style={{ width: 42, height: 42, borderRadius: 11, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.5)", cursor: "pointer", fontSize: 18 }}>✕</button>

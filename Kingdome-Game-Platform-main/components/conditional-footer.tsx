@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation"
 import { Footer } from "@/components/footer"
 import { DisclaimerFeedback } from "@/components/disclaimer-feedback"
+import { GamingQuizSection } from "@/components/gaming-quiz-section"
 
 // Routes that render <Footer /> explicitly themselves (lobby + every
 // dynamic game/room route). The root layout must skip rendering it here
@@ -19,6 +20,7 @@ export function ConditionalFooter() {
   return (
     <>
       <DisclaimerFeedback />
+      <GamingQuizSection />
       <Footer />
     </>
   )

@@ -141,6 +141,21 @@ function PanelFrame({ title, children, isMobile }: { title: string; children: Re
 }
 
 // ─── KINGDOM CARD (left panel) ──────────────────────────────────────────────
+// Piece-image fallback used only by the captured-piece row: rules-x8x8.ts
+// has no second image path to fall back to (unlike the 12x12/16x16 boards),
+// so on a load failure this falls straight through to an emoji glyph.
+const EMOJI_X: Record<PieceTypeX, string> = {
+  king: "♚", queen: "♛", rook: "♜", bishop: "♝", knight: "♞", paladin: "🛡️",
+};
+function CapturedPieceIconX8({ piece }: { piece: PieceX }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <span style={{ fontSize: 12 }}>{EMOJI_X[piece.type]}</span>;
+  return (
+    <img src={pieceImagePathX(piece)} alt={piece.type} onError={() => setFailed(true)}
+      style={{ width: 14, height: 14, objectFit: "contain", filter: "drop-shadow(0 1px 2px rgba(0,0,0,.8))" }} />
+  );
+}
+
 function KingdomCard({ color, name, isMe, isActive, isElim, captured }: {
   color: PlayerColorX; name: string; isMe: boolean; isActive: boolean; isElim: boolean; captured: PieceX[];
 }) {
@@ -162,7 +177,7 @@ function KingdomCard({ color, name, isMe, isActive, isElim, captured }: {
         {captured.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 5, maxHeight: 20, overflow: "hidden" }}>
             {captured.slice(0, 8).map((p, i) => (
-              <img key={i} src={pieceImagePathX(p)} alt={p.type} style={{ width: 14, height: 14, objectFit: "contain", filter: "drop-shadow(0 1px 2px rgba(0,0,0,.8))" }} />
+              <CapturedPieceIconX8 key={i} piece={p} />
             ))}
             {captured.length > 8 && <span style={{ fontSize: 8.5, color: "rgba(220,200,165,.5)" }}>+{captured.length - 8}</span>}
           </div>
@@ -195,26 +210,42 @@ function CompactPlayerPill({ color, name, isMe, isActive, isElim }: {
 
 // ─── CONTROL CARD (right panel — icon badge + title + subtitle, matching the
 // design2 reference's "Game Controls" list) ────────────────────────────────
-function ControlCard({ icon, title, subtitle, accent, onClick, disabled, isMobile }: {
-  icon: string; title: string; subtitle: string; accent: string; onClick: () => void; disabled?: boolean; isMobile: boolean;
+function ControlCard({ icon, title, subtitle, accent, onClick, disabled, isMobile, brown }: {
+  icon: string; title: string; subtitle: string; accent: string; onClick: () => void; disabled?: boolean; isMobile: boolean; brown?: boolean;
 }) {
+  // `brown` selects the shared neutral parchment-brown styling used by the
+  // 4 standard controls (Pass Turn / Battle Guide / Game Rules / Quit Game)
+  // across every board — kept uniform instead of per-action accent color.
+  // The conditional Super Attack button never passes `brown`, so it keeps
+  // its original accent-colored look untouched. Background/box-shadow for
+  // the brown variant are driven entirely by the .x8-btn-brown CSS class
+  // (not inline) so its :hover rule can actually take effect.
   return (
-    <button className="x8-btn" onClick={onClick} disabled={disabled}
+    <button className={brown ? "x8-btn x8-btn-brown" : "x8-btn"} onClick={onClick} disabled={disabled}
       style={{
         display: "flex", alignItems: "flex-start", gap: 12, width: isMobile ? undefined : "100%", textAlign: "left",
         padding: "13px 14px", borderRadius: 14, cursor: disabled ? "default" : "pointer", marginBottom: isMobile ? 0 : 12,
-        background: `linear-gradient(160deg,${accent}1c,${accent}0a)`, border: `1px solid ${accent}4a`, opacity: disabled ? .5 : 1,
+        border: brown ? "1px solid rgba(212,168,67,.35)" : `1px solid ${accent}4a`, opacity: disabled ? .5 : 1,
         fontFamily: "'Cinzel',Georgia,serif",
-        boxShadow: `0 8px 20px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.08)`,
+        ...(brown ? {} : {
+          background: `linear-gradient(160deg,${accent}1c,${accent}0a)`,
+          boxShadow: `0 8px 20px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.08)`,
+        }),
       }}>
-      <span style={{ width: 38, height: 38, borderRadius: 10, background: `${accent}26`, border: `1px solid ${accent}60`, boxShadow: `inset 0 1px 0 rgba(255,255,255,.15), 0 0 10px ${accent}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0 }}>{icon}</span>
+      <span style={{
+        width: 38, height: 38, borderRadius: 10,
+        background: brown ? "rgba(212,168,67,.18)" : `${accent}26`,
+        border: brown ? "1px solid rgba(212,168,67,.4)" : `1px solid ${accent}60`,
+        boxShadow: brown ? "inset 0 1px 0 rgba(255,255,255,.15)" : `inset 0 1px 0 rgba(255,255,255,.15), 0 0 10px ${accent}30`,
+        display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0,
+      }}>{icon}</span>
       {!isMobile && (
         <span style={{ minWidth: 0 }}>
-          <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: accent, letterSpacing: ".06em", textTransform: "uppercase" }}>{title}</p>
-          <p style={{ margin: "3px 0 0", fontSize: 10.5, color: "rgba(220,220,230,.55)", lineHeight: 1.4 }}>{subtitle}</p>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: brown ? "#ffffff" : accent, letterSpacing: ".06em", textTransform: "uppercase" }}>{title}</p>
+          <p style={{ margin: "3px 0 0", fontSize: 10.5, color: brown ? "rgba(255,255,255,.55)" : "rgba(220,220,230,.55)", lineHeight: 1.4 }}>{subtitle}</p>
         </span>
       )}
-      {isMobile && <span style={{ fontSize: 11, fontWeight: 800, color: accent, letterSpacing: ".05em", textTransform: "uppercase", alignSelf: "center" }}>{title}</span>}
+      {isMobile && <span style={{ fontSize: 11, fontWeight: 800, color: brown ? "#ffffff" : accent, letterSpacing: ".05em", textTransform: "uppercase", alignSelf: "center" }}>{title}</span>}
     </button>
   );
 }
@@ -619,19 +650,19 @@ export default function BoardX8x8({ myColor, roomId, playerNames, onGameEnd, soc
       onClick={() => { if (!paladinSuperUsed) handleSuperAttack(); }} />
   );
   const passBtn = (
-    <ControlCard isMobile={isMobile} icon="⏩" accent="#60a5fa" title="Pass Turn" subtitle="Skip your turn"
+    <ControlCard isMobile={isMobile} brown icon="⏩" accent="#60a5fa" title="Pass Turn" subtitle="Skip your turn"
       disabled={!isMyTurn} onClick={handlePass} />
   );
   const guideBtn = (
-    <ControlCard isMobile={isMobile} icon="📖" accent="#c084fc" title="Battle Guide" subtitle="View all pieces and abilities"
+    <ControlCard isMobile={isMobile} brown icon="📖" accent="#c084fc" title="Battle Guide" subtitle="View all pieces and abilities"
       onClick={() => setShowGuide(true)} />
   );
   const rulesBtn = (
-    <ControlCard isMobile={isMobile} icon="📜" accent="#4ade80" title="Game Rules" subtitle="Learn how to play and win"
+    <ControlCard isMobile={isMobile} brown icon="📜" accent="#4ade80" title="Game Rules" subtitle="Learn how to play and win"
       onClick={() => setShowRules(true)} />
   );
   const quitBtn = !gs.eliminatedPlayers.includes(myColor) && gs.status === "playing" && (
-    <ControlCard isMobile={isMobile} icon="🚩" accent="#f87171" title="Quit Game" subtitle="Exit the current match"
+    <ControlCard isMobile={isMobile} brown icon="🚩" accent="#f87171" title="Quit Game" subtitle="Exit the current match"
       onClick={() => setShowQuitConfirm(true)} />
   );
 
@@ -658,6 +689,8 @@ export default function BoardX8x8({ myColor, roomId, playerNames, onGameEnd, soc
         .x8-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 26px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.12);}
         .x8-btn:active:not(:disabled){transform:translateY(0) scale(.98);}
         .x8-btn:disabled{cursor:default;}
+        .x8-btn-brown{background:linear-gradient(160deg,#5c3d1f 0%,#2a1a0a 100%);box-shadow:0 8px 20px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.08);}
+        .x8-btn-brown:hover:not(:disabled){background:linear-gradient(160deg,#6b4726 0%,#331f0d 100%);box-shadow:0 12px 26px rgba(0,0,0,.55);}
         .x8pi{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:82%;height:82%;object-fit:contain;pointer-events:none;filter:drop-shadow(0 3px 6px rgba(0,0,0,.9));}
         .x8-rule-card{padding:16px 18px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid rgba(212,168,67,.1);transition:border-color .2s,background .2s;display:flex;gap:16px;align-items:flex-start;}
         .x8-rule-card:hover{background:rgba(212,168,67,.05);border-color:rgba(212,168,67,.22);}
@@ -778,7 +811,7 @@ export default function BoardX8x8({ myColor, roomId, playerNames, onGameEnd, soc
         {/* ── BATTLE GUIDE MODAL ── */}
         {showGuide && (
           <div style={{ position: "fixed", inset: 0, zIndex: 111, background: "rgba(0,0,0,.88)", backdropFilter: "blur(16px)", display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? 14 : 24 }}>
-            <div className="x8-modal-scroll" style={{ width: isMobile ? "96vw" : "min(760px,92vw)", maxHeight: "90vh", overflowY: "auto", borderRadius: 26, padding: isMobile ? "24px 18px" : "34px 34px", background: "linear-gradient(155deg,#0e0902 0%,#1a1005 40%,#0e0902 100%)", border: "1px solid rgba(212,168,67,.22)", fontFamily: "'Cinzel',Georgia,serif" }}>
+            <div className="x8-modal-scroll" data-lenis-prevent style={{ width: isMobile ? "96vw" : "min(760px,92vw)", maxHeight: "90vh", overflowY: "auto", borderRadius: 26, padding: isMobile ? "24px 18px" : "34px 34px", background: "linear-gradient(155deg,#0e0902 0%,#1a1005 40%,#0e0902 100%)", border: "1px solid rgba(212,168,67,.22)", fontFamily: "'Cinzel',Georgia,serif" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <div>
                   <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 27, color: "#e8c96a" }}>🧭 Battle Guide</h2>
@@ -799,7 +832,7 @@ export default function BoardX8x8({ myColor, roomId, playerNames, onGameEnd, soc
         {/* ── RULES MODAL ── */}
         {showRules && (
           <div style={{ position: "fixed", inset: 0, zIndex: 110, background: "rgba(0,0,0,.88)", backdropFilter: "blur(16px)", display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? 14 : 24 }}>
-            <div className="x8-modal-scroll" style={{ width: isMobile ? "96vw" : "min(860px,94vw)", maxHeight: "90vh", overflowY: "auto", borderRadius: 26, padding: isMobile ? "24px 18px" : "34px 34px", background: "linear-gradient(155deg,#0e0902 0%,#1a1005 40%,#0e0902 100%)", border: "1px solid rgba(212,168,67,.22)", fontFamily: "'Cinzel',Georgia,serif" }}>
+            <div className="x8-modal-scroll" data-lenis-prevent style={{ width: isMobile ? "96vw" : "min(860px,94vw)", maxHeight: "90vh", overflowY: "auto", borderRadius: 26, padding: isMobile ? "24px 18px" : "34px 34px", background: "linear-gradient(155deg,#0e0902 0%,#1a1005 40%,#0e0902 100%)", border: "1px solid rgba(212,168,67,.22)", fontFamily: "'Cinzel',Georgia,serif" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                 <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 28, color: "#e8c96a" }}>⚔️ X Board Rules</h2>
                 <button onClick={() => setShowRules(false)} style={{ width: 42, height: 42, borderRadius: 11, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.5)", cursor: "pointer", fontSize: 18 }}>✕</button>

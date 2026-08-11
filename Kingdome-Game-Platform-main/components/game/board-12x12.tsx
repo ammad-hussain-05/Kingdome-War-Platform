@@ -7,6 +7,7 @@ import {
   applySleepSpell, applyTeleportSpell, applyWizardTeleport,
   applyMageSacrifice, applyAxeSwing, getAxeSwingSquares,
   rollWishDice, cloneState12, applyKingMorph, getLegalPaladinSuperMoves12,
+  getLegalCastleMoves12, executeCastle12,
 } from "@/lib/game/rules-12x12";
 import Fireworks from "@/components/game/fireworks";
 
@@ -29,7 +30,7 @@ const PIECE_INFO: Record<PieceType12,{name:string;move:string;special:string}> =
   "cavalier":    {name:"Cavalier/Prince",move:"L-shape + 1 any dir",special:"Always lands opposite color square"},
   "mage":        {name:"Mage/Princess",move:"Any direction unlimited",special:"Sacrifice self by touch to restore Super Queen's full power"},
   "elvin-archer":{name:"Elvin Archer",move:"Any dir + L-shape + 1 step",special:"Sword/dagger = 1-square paladin move"},
-  "paladin":     {name:"Paladin",move:"Normal movement: 1 square any direction",special:"Super Move: one-time 3-square surprise attack in any direction, then 1-square only"},
+  "paladin":     {name:"Paladin",move:"Normal movement: 1 square any direction",special:"Super Move: one-time 3-square surprise attack in any direction, then 1-square only · Reverse Castle: swap with an ally"},
 };
 // Rules/guide icons use the single-portrait art in public/all-characters —
 // no color variant needed since these badges are purely illustrative.
@@ -50,6 +51,16 @@ function GuideIcon({ type }: { type: PieceType12 }) {
   if (failed) return <>{EMOJI[type]}</>;
   return <img src={guideIconPath(type)} alt={type} onError={() => setFailed(true)}
     style={{ width:"82%", height:"82%", objectFit:"contain", pointerEvents:"none" }}/>;
+}
+// Spell-action buttons reuse the same portrait art as the Battle Guide
+// (GUIDE_ICON_FILE) instead of a plain emoji glyph, falling back to the
+// spell's original emoji if the art is missing.
+function SpellPieceIcon({ pieceKey, fallback }: { pieceKey: PieceType12; fallback: string }) {
+  const [failed, setFailed] = useState(false);
+  const nm = GUIDE_ICON_FILE[pieceKey];
+  if (failed || !nm) return <>{fallback}</>;
+  return <img src={`/all-characters/${nm}.png`} alt={pieceKey} onError={() => setFailed(true)}
+    style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }} />;
 }
 
 const AC: Record<PlayerColor,string> = { white:"#e8dfc0", black:"#c8a96e" };
@@ -221,6 +232,44 @@ function PlayerCard({name,color,isMe,isActive,isElim,captured,inCheck}:{name:str
   );
 }
 
+// ─── STANDARDIZED ACTION BUTTON ───────────────────────────────────────────────
+// Shared visual treatment for the 4 core action buttons: Pass Turn, Battle
+// Guide, Game Rules, Quit Game. Conditional ability-trigger buttons (e.g.
+// Paladin Super Attack) keep their own accent-colored styling and do NOT use
+// this component.
+function ActionButton({icon,title,subtitle,onClick,disabled}:{icon:string;title:string;subtitle?:string;onClick:()=>void;disabled?:boolean}){
+  const [hot,setHot]=useState(false);
+  const [pressed,setPressed]=useState(false);
+  const active=hot&&!disabled;
+  return(
+    <button
+      onClick={()=>{if(disabled)return;onClick();}}
+      onMouseEnter={()=>!disabled&&setHot(true)}
+      onMouseLeave={()=>{setHot(false);setPressed(false);}}
+      onMouseDown={()=>!disabled&&setPressed(true)}
+      onMouseUp={()=>setPressed(false)}
+      disabled={disabled}
+      style={{
+        width:"100%",display:"flex",alignItems:"center",gap:12,textAlign:"left",
+        padding:"13px 14px",borderRadius:14,
+        background:active?"linear-gradient(160deg, #6b4726 0%, #331f0d 100%)":"linear-gradient(160deg, #5c3d1f 0%, #2a1a0a 100%)",
+        border:"1px solid rgba(212,168,67,.35)",
+        boxShadow:active?"0 12px 26px rgba(0,0,0,.55)":"0 8px 20px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08)",
+        fontFamily:"'Cinzel', Georgia, serif",
+        cursor:disabled?"default":"pointer",
+        opacity:disabled?.5:1,
+        transform:disabled?"none":pressed?"translateY(0) scale(.98)":active?"translateY(-2px)":"none",
+        transition:"all .18s ease",
+      }}>
+      <span style={{width:38,height:38,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(212,168,67,.18)",border:"1px solid rgba(212,168,67,.4)",fontSize:18,flexShrink:0}}>{icon}</span>
+      <div style={{minWidth:0}}>
+        <p style={{margin:0,fontSize:12,fontWeight:800,color:"#ffffff",textTransform:"uppercase",letterSpacing:".06em"}}>{title}</p>
+        {subtitle&&<p style={{margin:"3px 0 0",fontSize:10.5,color:"rgba(255,255,255,.55)"}}>{subtitle}</p>}
+      </div>
+    </button>
+  );
+}
+
 // ─── GUIDE PANEL ─────────────────────────────────────────────────────────────
 function GuidePanel({myColor,gs}:{myColor:PlayerColor;gs:GameState12}){
   const [open,setOpen]=useState(false);
@@ -229,12 +278,9 @@ function GuidePanel({myColor,gs}:{myColor:PlayerColor;gs:GameState12}){
   for(let r=0;r<12;r++)for(let c=0;c<12;c++){const p=gs.board[r][c];if(p&&p.color===myColor)myP.add(p.type);}
   return(
     <div style={{position:"relative",width:"100%"}}>
-      <button onClick={()=>{setOpen(o=>!o);snd("click");}} style={{width:"100%",minHeight:54,padding:"12px 15px",borderRadius:16,background:open?`linear-gradient(135deg,${ac}22,rgba(10,12,22,.96))`:"linear-gradient(135deg,rgba(8,12,22,.96),rgba(36,2,18,.92))",border:`1px solid ${open?ac+"70":ac+"35"}`,color:ac,fontSize:12,cursor:"pointer",fontWeight:900,letterSpacing:".12em",textTransform:"uppercase",fontFamily:"'Cinzel',Georgia,serif",transition:"all .2s",boxShadow:open?`0 0 30px ${GL[myColor]},0 12px 26px rgba(0,0,0,.65),inset 0 1px 0 rgba(255,255,255,.16)`:`0 0 18px ${GL[myColor]},0 8px 20px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.10)`,display:"flex",alignItems:"center",justifyContent:"center",gap:10,position:"relative",overflow:"hidden"}}>
-        <span style={{width:30,height:30,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",background:`linear-gradient(145deg,${ac}24,rgba(0,0,0,.35))`,border:`1px solid ${ac}35`,boxShadow:`0 0 12px ${GL[myColor]},inset 0 1px 0 rgba(255,255,255,.12)`,fontSize:17,filter:"drop-shadow(0 3px 5px rgba(0,0,0,.7))"}}>{open?"✕":"📘"}</span>
-        <span>{open?"Close Guide":"Battle Guide"}</span>
-      </button>
+      <ActionButton icon={open?"✕":"📘"} title={open?"Close Guide":"Battle Guide"} subtitle="Pieces, powers & rules" onClick={()=>{setOpen(o=>!o);snd("click");}}/>
       {open&&(
-        <div style={{position:"absolute",bottom:"112%",right:0,zIndex:70,width:"min(300px, 90vw)",maxHeight:"460px",overflowY:"auto",padding:"18px",borderRadius:"22px",background:"linear-gradient(160deg,rgba(6,8,14,.98),rgba(18,22,36,.97),rgba(7,5,3,.98))",backdropFilter:"blur(26px)",border:`1px solid ${ac}35`,boxShadow:`0 0 55px ${GL[myColor]},0 30px 80px rgba(0,0,0,.92),inset 0 1px 0 rgba(255,255,255,.12)`}}>
+        <div data-lenis-prevent style={{position:"absolute",bottom:"112%",right:0,zIndex:70,width:"min(300px, 90vw)",maxHeight:"460px",overflowY:"auto",padding:"18px",borderRadius:"22px",background:"linear-gradient(160deg,rgba(6,8,14,.98),rgba(18,22,36,.97),rgba(7,5,3,.98))",backdropFilter:"blur(26px)",border:`1px solid ${ac}35`,boxShadow:`0 0 55px ${GL[myColor]},0 30px 80px rgba(0,0,0,.92),inset 0 1px 0 rgba(255,255,255,.12)`}}>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16,paddingBottom:12,borderBottom:`1px solid ${ac}22`}}>
             <div style={{width:46,height:46,borderRadius:15,display:"flex",alignItems:"center",justifyContent:"center",fontSize:25,background:`linear-gradient(145deg,${ac}22,rgba(0,0,0,.35))`,border:`1px solid ${ac}35`,boxShadow:`0 0 18px ${GL[myColor]},inset 0 1px 0 rgba(255,255,255,.14)`}}>🧭</div>
             <div>
@@ -337,7 +383,12 @@ function SpecialPanel({gs,myColor,onAction,onCancel}:{gs:GameState12;myColor:Pla
   };
   const mNQ=findMNQ();
   if(!hasSorc&&!hasWiz&&!hasKingMorph&&!mNQ&&!gs.spellMessage&&!gs.superMoveMode)return null;
-  const btn=(bg:string,border:string,color:string)=>({padding:"8px 14px",borderRadius:10,background:bg,border:`1px solid ${border}`,color,fontSize:11,cursor:"pointer",fontWeight:700,transition:"all .2s",boxShadow:`0 4px 16px ${bg}80`});
+  const btn=(bg:string,border:string,color:string)=>({padding:"8px 14px",borderRadius:10,background:bg,border:`1px solid ${border}`,color,fontSize:11,cursor:"pointer",fontWeight:700,transition:"all .2s",boxShadow:`0 4px 16px ${bg}80`,display:"inline-flex",alignItems:"center",gap:6});
+  const spellIcon=(pieceKey:PieceType12,fallback:string)=>(
+    <span style={{width:16,height:16,display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+      <SpellPieceIcon pieceKey={pieceKey} fallback={fallback}/>
+    </span>
+  );
   // Only the Sorceress's third spell — the Wish — is dice-gated in the
   // reference rules; every other spell/special action here is guaranteed.
   const morphTargets:PieceType12[]=["super-queen","dragon","gargoyle","sorceress","super-knight","assassin","executioner","cavalier","mage","elvin-archer","paladin"];
@@ -360,10 +411,10 @@ function SpecialPanel({gs,myColor,onAction,onCancel}:{gs:GameState12;myColor:Pla
       )}
       {!gs.specialMode&&gs.wishDiceResult===null&&!gs.superMoveMode&&(
         <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
-          {hasSorc&&<><button onClick={()=>onAction("spell-sleep")} style={btn("rgba(80,60,200,.2)","rgba(80,60,200,.4)","#9090ff")}>😴 Sleep ({spL})</button><button onClick={()=>onAction("spell-teleport")} style={btn("rgba(180,60,200,.2)","rgba(180,60,200,.4)","#d080ff")}>🌀 Teleport</button><button onClick={()=>onAction("spell-wish")} style={btn("rgba(200,160,20,.2)","rgba(200,160,20,.4)","#f0c040")}>⭐ Wish</button></>}
-          {hasWiz&&<button onClick={()=>onAction("wizard-teleport")} style={btn("rgba(60,150,200,.2)","rgba(60,150,200,.4)","#60c0f0")}>🧙 Wizard Teleport</button>}
-          {hasKingMorph&&<button onClick={()=>onAction("king-morph")} style={btn("rgba(212,168,67,.2)","rgba(212,168,67,.4)","#e8dfc0")}>🔮 King's Last Wish</button>}
-          {mNQ&&<button onClick={()=>onAction("mage-sacrifice",mNQ)} style={btn("rgba(200,80,80,.2)","rgba(200,80,80,.4)","#ff9090")}>💫 Mage Sacrifice</button>}
+          {hasSorc&&<><button onClick={()=>onAction("spell-sleep")} style={btn("rgba(80,60,200,.2)","rgba(80,60,200,.4)","#9090ff")}>{spellIcon("sorceress","😴")} Sleep ({spL})</button><button onClick={()=>onAction("spell-teleport")} style={btn("rgba(180,60,200,.2)","rgba(180,60,200,.4)","#d080ff")}>{spellIcon("sorceress","🌀")} Teleport</button><button onClick={()=>onAction("spell-wish")} style={btn("rgba(200,160,20,.2)","rgba(200,160,20,.4)","#f0c040")}>{spellIcon("sorceress","⭐")} Wish</button></>}
+          {hasWiz&&<button onClick={()=>onAction("wizard-teleport")} style={btn("rgba(60,150,200,.2)","rgba(60,150,200,.4)","#60c0f0")}>{spellIcon("wizard","🧙")} Wizard Teleport</button>}
+          {hasKingMorph&&<button onClick={()=>onAction("king-morph")} style={btn("rgba(212,168,67,.2)","rgba(212,168,67,.4)","#e8dfc0")}>{spellIcon("mystic-king","🔮")} King's Last Wish</button>}
+          {mNQ&&<button onClick={()=>onAction("mage-sacrifice",mNQ)} style={btn("rgba(200,80,80,.2)","rgba(200,80,80,.4)","#ff9090")}>{spellIcon("mage","💫")} Mage Sacrifice</button>}
         </div>
       )}
       {gs.superMoveMode&&<p style={{margin:"0 0 4px",fontSize:11,color:"#ffb347",textAlign:"center",fontWeight:700}}>⚔ Choose a square 3 spaces away to strike</p>}
@@ -553,7 +604,7 @@ export default function Board12x12({myColor,roomId,playerNames,socket,onGameEnd}
 
   const cancelSpecial=useCallback(()=>{
     const state=gsRef.current;
-    const ns={...cloneState12(state),specialMode:null as any,specialData:null,spellMessage:null,wishDiceResult:null,selectedSquare:null,validMoves:[],superMoves:[],superMoveMode:false};
+    const ns={...cloneState12(state),specialMode:null as any,specialData:null,spellMessage:null,wishDiceResult:null,selectedSquare:null,validMoves:[],superMoves:[],superMoveMode:false,castleMoves:[]};
     setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
   },[roomId,socket]);
 
@@ -587,6 +638,15 @@ export default function Board12x12({myColor,roomId,playerNames,socket,onGameEnd}
       showMoveFeedback(ns,sq);
       setGs(ns);socket?.emit("game:move",{roomId,newState:ns});
       if(ns.status==="finished"&&ns.winner){setTimeout(()=>{setShowWin(ns.winner);snd("win");},400);onGameEnd?.(ns.winner!);}
+      return;
+    }
+
+    // Reverse Castle — swap the selected paladin with an adjacent ally.
+    if(selectedSquare&&state.castleMoves.some(m=>sq12Eq(m,sq))){
+      const ns=executeCastle12(state,selectedSquare,sq);
+      setAnimSq(sq);setTimeout(()=>setAnimSq(null),420);
+      snd("move");
+      setGs(ns);socket?.emit("game:move",{roomId,newState:ns,action:"castle"});
       return;
     }
 
@@ -643,8 +703,8 @@ export default function Board12x12({myColor,roomId,playerNames,socket,onGameEnd}
       if(ns.status==="finished"&&ns.winner){setTimeout(()=>{setShowWin(ns.winner);snd("win");},400);onGameEnd?.(ns.winner!);}
       return;
     }
-    if(cp&&cp.color===myColor&&cp.sleepRoundsLeft===0){snd("select");const moves=getLegalMoves12(board,row,col,state.turnOrder);setGs(prev=>({...prev,selectedSquare:sq,validMoves:moves,superMoves:[],superMoveMode:false}));return;}
-    setGs(prev=>({...prev,selectedSquare:null,validMoves:[],superMoves:[],superMoveMode:false}));
+    if(cp&&cp.color===myColor&&cp.sleepRoundsLeft===0){snd("select");const moves=getLegalMoves12(board,row,col,state.turnOrder);setGs(prev=>({...prev,selectedSquare:sq,validMoves:moves,castleMoves:cp.type==="paladin"?getLegalCastleMoves12(board,row,col):[],superMoves:[],superMoveMode:false}));return;}
+    setGs(prev=>({...prev,selectedSquare:null,validMoves:[],castleMoves:[],superMoves:[],superMoveMode:false}));
   },[myColor,roomId,socket,onGameEnd,isElim]);
 
   // ─── QUIT ────────────────────────────────────────────────────────────────
@@ -756,16 +816,6 @@ const cols=[...Array(12)].map((_,i)=>i);
                 </button>
               );
             })()}
-            <button onClick={()=>setShowRules(true)} style={{width:"100%",height:50,background:"#080a08",color:"#4ade80",border:"1px solid rgba(74,222,128,.35)",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:".1em",textTransform:"uppercase",fontFamily:"'Cinzel',Georgia,serif",boxShadow:"0 0 18px rgba(74,222,128,.25),0 4px 16px rgba(0,0,0,.7),inset 0 1px 0 rgba(74,222,128,.15)",transition:"all .2s"}}
-              onMouseEnter={e=>{e.currentTarget.style.background="rgba(74,222,128,.08)";e.currentTarget.style.borderColor="rgba(74,222,128,.6)";}}
-              onMouseLeave={e=>{e.currentTarget.style.background="#080a08";e.currentTarget.style.borderColor="rgba(74,222,128,.35)";}}>
-              Game Rules
-            </button>
-            <button onClick={()=>setShowQuitConfirm(true)} style={{width:"100%",height:50,background:"#080808",color:"#f87171",border:"1px solid rgba(248,113,113,.3)",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:".1em",textTransform:"uppercase",fontFamily:"'Cinzel',Georgia,serif",boxShadow:"0 0 18px rgba(248,113,113,.2),0 4px 16px rgba(0,0,0,.7),inset 0 1px 0 rgba(248,113,113,.1)",transition:"all .2s"}}
-              onMouseEnter={e=>{e.currentTarget.style.background="rgba(248,113,113,.07)";e.currentTarget.style.borderColor="rgba(248,113,113,.55)";}}
-              onMouseLeave={e=>{e.currentTarget.style.background="#080808";e.currentTarget.style.borderColor="rgba(248,113,113,.3)";}}>
-              Quit Game
-            </button>
           </div>
         </div>
 
@@ -787,6 +837,7 @@ const cols=[...Array(12)].map((_,i)=>i);
                   const isSel=!!gs.selectedSquare&&sq12Eq(gs.selectedSquare,sq);
                   const isValid=gs.validMoves.some(m=>sq12Eq(m,sq));
                   const isSuper=gs.superMoveMode&&gs.superMoves.some(m=>sq12Eq(m,sq));
+                  const isCastleMove=gs.castleMoves.some(m=>sq12Eq(m,sq));
                   const isLF=!!gs.lastMove&&sq12Eq(gs.lastMove.from,sq);
                   const isLT=!!gs.lastMove&&sq12Eq(gs.lastMove.to,sq);
                   const isChk=piece?.type==="mystic-king"&&piece.color===gs.check;
@@ -802,6 +853,7 @@ const cols=[...Array(12)].map((_,i)=>i);
                   else if(isGreat)ov="rgba(255,215,0,.25)";
                   else if(isRisky)ov="rgba(255,60,60,.25)";
                   else if(isLF||isLT)ov="rgba(212,168,67,.2)";
+                  else if(isCastleMove)ov="rgba(80,160,255,.18)";
                   else if(isAxeT)ov="rgba(255,80,0,.45)";
                   if(gs.superMoveMode&&!isSel&&!isSuper)ov=ov||"rgba(0,0,0,.1)";
                   return(
@@ -813,6 +865,7 @@ const cols=[...Array(12)].map((_,i)=>i);
                       {isValid&&!piece&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:sqSize*.3,height:sqSize*.3,borderRadius:"50%",background:"rgba(212,168,67,.68)",boxShadow:"0 0 14px rgba(212,168,67,.5)",animation:"dotPop .14s ease both",pointerEvents:"none",zIndex:4}}/>}
                       {isValid&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"3px solid rgba(212,168,67,.82)",borderRadius:3,boxShadow:"inset 0 0 8px rgba(212,168,67,.25)",animation:"dotPop .14s ease both",pointerEvents:"none"}}/>}
                       {isAxeT&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"3px solid rgba(255,80,0,.85)",borderRadius:3,animation:"dotPop .14s ease both",pointerEvents:"none"}}/>}
+                      {isCastleMove&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"3px dashed rgba(80,160,255,.9)",borderRadius:3,pointerEvents:"none"}}/>}
                       {isSuper&&!piece&&<div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:sqSize*.34,height:sqSize*.34,borderRadius:"50%",background:"rgba(255,140,0,.82)",boxShadow:"0 0 16px rgba(255,140,0,.7)",animation:"dotPop .14s ease both",pointerEvents:"none",zIndex:4}}/>}
                       {isSuper&&piece&&<div style={{position:"absolute",inset:2,zIndex:4,border:"3px solid rgba(255,140,0,.9)",borderRadius:3,boxShadow:"inset 0 0 8px rgba(255,140,0,.3)",animation:"dotPop .14s ease both",pointerEvents:"none"}}/>}
                       {isGreat&&<div style={{position:"absolute",inset:0,zIndex:4,borderRadius:3,border:"2px solid rgba(255,215,0,.6)",boxShadow:"inset 0 0 16px rgba(255,215,0,.2)",pointerEvents:"none"}}/>}
@@ -837,12 +890,15 @@ const cols=[...Array(12)].map((_,i)=>i);
           <div style={{height:isMobile?200:260}}>
             <ChatPanel myColor={myColor} messages={chat} onSend={sendChat}/>
           </div>
-          <GuidePanel myColor={myColor} gs={gs}/>
-          <button onClick={()=>{if(gs.currentTurn!==myColor||gs.status!=="playing")return;const ns=advanceTurn(cloneState12(gsRef.current));setGs(ns);socket?.emit("game:move",{roomId,newState:ns});snd("click");}}
-            style={{width:"100%",minHeight:52,padding:"12px 14px",borderRadius:14,background:gs.currentTurn===myColor&&gs.status==="playing"?"linear-gradient(135deg,rgba(9,95,190,.28),rgba(35,35,90,.42))":"linear-gradient(135deg,rgba(4,40,48,.65),rgba(18,18,24,.78))",border:gs.currentTurn===myColor&&gs.status==="playing"?"1px solid rgba(150,150,255,.45)":"1px solid rgba(255,255,255,.12)",color:gs.currentTurn===myColor&&gs.status==="playing"?"#c7c9ff":"rgba(220,220,235,.42)",fontSize:12,cursor:gs.currentTurn===myColor&&gs.status==="playing"?"pointer":"default",fontWeight:800,letterSpacing:".1em",textTransform:"uppercase",fontFamily:"'Cinzel',Georgia,serif",boxShadow:gs.currentTurn===myColor&&gs.status==="playing"?"0 0 22px rgba(120,120,255,.24),0 8px 24px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.12)":"0 8px 22px rgba(0,0,0,.38),inset 0 1px 0 rgba(255,255,255,.06)",transition:"all .2s",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
-            <span style={{fontSize:17}}>⏭️</span>
-            <span>{gs.currentTurn===myColor&&gs.status==="playing"?"Pass Turn":"Wait Turn"}</span>
-          </button>
+          <div style={{display:"flex",flexDirection:"column",gap:10,width:"100%"}}>
+            <ActionButton icon="⏭️" title={gs.currentTurn===myColor&&gs.status==="playing"?"Pass Turn":"Wait Turn"}
+              subtitle={gs.currentTurn===myColor&&gs.status==="playing"?"End your turn":"Not your turn yet"}
+              disabled={!(gs.currentTurn===myColor&&gs.status==="playing")}
+              onClick={()=>{const ns=advanceTurn(cloneState12(gsRef.current));setGs(ns);socket?.emit("game:move",{roomId,newState:ns});snd("click");}}/>
+            <GuidePanel myColor={myColor} gs={gs}/>
+            <ActionButton icon="📜" title="Game Rules" subtitle="How to play" onClick={()=>setShowRules(true)}/>
+            <ActionButton icon="🏳️" title="Quit Game" subtitle="Forfeit the match" onClick={()=>setShowQuitConfirm(true)}/>
+          </div>
         </div>
 
         {/* ── OVERLAYS ── */}
@@ -852,7 +908,7 @@ const cols=[...Array(12)].map((_,i)=>i);
         {/* ── GAME RULES ── */}
         {showRules&&(
           <div style={{position:"fixed",inset:0,zIndex:110,background:"rgba(0,0,0,.88)",backdropFilter:"blur(16px)",display:"flex",alignItems:"center",justifyContent:"center",padding:"0px",animation:"rulesIn .3s cubic-bezier(.22,1,.36,1)"}}>
-            <div className="rules-scroll" style={{width:"min(740px,96vw)",maxHeight:"88vh",overflowY:"auto",borderRadius:28,padding:"32px 18px 28px",background:"linear-gradient(155deg,#0e0902 0%,#1a1005 40%,#0e0902 100%)",border:"1px solid rgba(212,168,67,.22)",boxShadow:"0 0 0 1px rgba(212,168,67,.06),0 0 60px rgba(212,168,67,.1),0 40px 100px rgba(0,0,0,.9),inset 0 1px 0 rgba(212,168,67,.15)",fontFamily:"'Cinzel',Georgia,serif",position:"relative",overflowX:"hidden"}}>
+            <div className="rules-scroll" data-lenis-prevent style={{width:"min(740px,96vw)",maxHeight:"88vh",overflowY:"auto",borderRadius:28,padding:"32px 18px 28px",background:"linear-gradient(155deg,#0e0902 0%,#1a1005 40%,#0e0902 100%)",border:"1px solid rgba(212,168,67,.22)",boxShadow:"0 0 0 1px rgba(212,168,67,.06),0 0 60px rgba(212,168,67,.1),0 40px 100px rgba(0,0,0,.9),inset 0 1px 0 rgba(212,168,67,.15)",fontFamily:"'Cinzel',Georgia,serif",position:"relative",overflowX:"hidden"}}>
               <div style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:260,height:1,background:"linear-gradient(90deg,transparent,rgba(212,168,67,.6),transparent)",pointerEvents:"none"}}/>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:26}}>
                 <div>

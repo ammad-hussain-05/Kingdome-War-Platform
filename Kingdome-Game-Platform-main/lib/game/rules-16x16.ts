@@ -4,7 +4,7 @@ export type PieceType16 =
   | "mystic-king" | "super-queen" | "wizard" | "sorceress" | "conjurer" | "warlock"
   | "trickster" | "dragon" | "gargoyle" | "thief" | "super-knight" | "elvin-archer"
   | "executioner" | "assassin" | "cavalier" | "mage" | "paladin"
-  | "archer" | "aerobat-assassin";
+  | "archer" | "aerobat-assassin" | "berserker";
 
 export interface Piece16 {
   id: string;
@@ -34,6 +34,12 @@ export interface Piece16 {
   tricksterMovesCount: number;
   // Conjurer
   conjurerSpellsLeft: number;
+  // Conjurer's one-time Shadow Spell (summons the Berserker) — wholly
+  // separate from conjurerSpellsLeft (the revive spell's charge count).
+  conjurerShadowSpellUsed: boolean;
+  // Berserker — one-time crowd/rampage attack (cleaves through 2 adjacent
+  // aligned enemies in a single strike).
+  berserkerRampageUsed: boolean;
   // Bound (from Warlock)
   boundRoundsLeft: number;
 }
@@ -51,7 +57,8 @@ export type SpecialMode16 =
   | "conjurer-revive-select"
   | "thief-steal-jump"
   | "mage-sacrifice-pending"
-  | "warlock-bind-offer";
+  | "warlock-bind-offer"
+  | "berserker-rampage-mode";
 
 export interface GameState16 {
   board: Board16;
@@ -67,6 +74,9 @@ export interface GameState16 {
   // separate from validMoves so it never appears as a normal move option.
   superMoves: Square16[];
   superMoveMode: boolean;
+  // Paladin Reverse Castle — squares adjacent to the selected paladin
+  // occupied by a friendly non-paladin piece it can swap places with.
+  castleMoves: Square16[];
   status: "playing" | "finished";
   winner: PlayerColor16 | null;
   lastMove: { from: Square16; to: Square16 } | null;
@@ -102,6 +112,7 @@ export function cloneState16(s: GameState16): GameState16 {
     capturedBy: { white: [...s.capturedBy.white], black: [...s.capturedBy.black] },
     validMoves: [...s.validMoves],
     superMoves: [...s.superMoves],
+    castleMoves: [...s.castleMoves],
     specialData: s.specialData ? { ...s.specialData } : null,
     boundPlayers: [...s.boundPlayers],
     tricksterAliveCount: { ...s.tricksterAliveCount },
@@ -132,6 +143,7 @@ const nm: Record<PieceType16, string> = {
   "paladin":          p.color === "white" ? "Paladin - White" : "Paladin - Black",
   "archer":           p.color === "white" ? "Archer White" : "Archer Black",
   "thief":            p.color === "white" ? "Thief White" : "Thief Black",
+  "berserker":        p.color === "white" ? "Beserker-White" : "Beserker-Black",
 };
   return `/pieces-16x16/${folder}/${nm[p.type]}.png`;
 }
@@ -152,6 +164,8 @@ function mkP16(type: PieceType16, color: PlayerColor16, id: string): Piece16 {
     thiefStealUsed: false,
     tricksterMovesCount: 0,
     conjurerSpellsLeft: 1,
+    conjurerShadowSpellUsed: false,
+    berserkerRampageUsed: false,
     boundRoundsLeft: 0,
   };
 }
@@ -192,6 +206,7 @@ export function createInitialGameState16(): GameState16 {
     validMoves: [],
     superMoves: [],
     superMoveMode: false,
+    castleMoves: [],
     status: "playing",
     winner: null,
     lastMove: null,
@@ -370,6 +385,15 @@ export function getRawMoves16(b: Board16, r: number, c: number): Square16[] {
       m = slide16(b,r,c,ALL8_16,color);
       break;
 
+    case "berserker":
+      // Unlimited slide, any direction — a non-ethereal piece, so slide16
+      // already lets it capture both mortal AND ethereal targets (the
+      // ethereal-restriction branch only applies when the MOVING piece is
+      // ethereal). The wizard/sorceress kill-immunity below is separately
+      // waived for this type — the Berserker's unique combat exception.
+      m = slide16(b,r,c,ALL8_16,color);
+      break;
+
     case "super-knight":
       m = lj16(b,r,c,color);
       break;
@@ -420,8 +444,10 @@ export function getRawMoves16(b: Board16, r: number, c: number): Square16[] {
   // Only a Wizard or Sorceress may kill a Wizard or Sorceress — every other
   // piece (including non-ethereal humans and the lesser ethereals like
   // Conjurer/Warlock/Trickster, whose own cases already narrow this) treats
-  // an enemy Wizard/Sorceress square as untouchable.
-  if (type !== "wizard" && type !== "sorceress") {
+  // an enemy Wizard/Sorceress square as untouchable. The Berserker is the
+  // sole exception — its unique combat rule lets it kill BOTH mortal and
+  // immortal/ethereal pieces without restriction.
+  if (type !== "wizard" && type !== "sorceress" && type !== "berserker") {
     m = m.filter(s => {
       const t = b[s.row][s.col];
       return !(t && (t.type === "wizard" || t.type === "sorceress"));
@@ -449,6 +475,28 @@ export function getPaladinSuperMoves16(b: Board16, r: number, c: number): Square
     const t = b[s.row][s.col];
     return !(t && (t.type === "wizard" || t.type === "sorceress"));
   });
+}
+
+// ─── PALADIN REVERSE CASTLE ────────────────────────────────────────────────
+// A paladin adjacent to a friendly non-paladin piece may swap places with it
+// (in any of the 8 directions), letting that piece "defend" the paladin.
+// Mirrors getCastleMoves in rules-8x8.ts exactly — no check-safety filtering,
+// same as that reference implementation.
+export function getCastleMoves16(board: Board16, row: number, col: number): Square16[] {
+  const piece = board[row][col];
+  if (!piece || piece.type !== "paladin") return [];
+  const moves: Square16[] = [];
+  for (const [dr, dc] of ALL8_16) {
+    const r = row + dr, c = col + dc;
+    if (!inB16(r, c)) continue;
+    const ally = board[r][c];
+    if (ally && ally.color === piece.color && ally.type !== "paladin") moves.push({ row: r, col: c });
+  }
+  return moves;
+}
+
+export function getLegalCastleMoves16(board: Board16, row: number, col: number): Square16[] {
+  return getCastleMoves16(board, row, col);
 }
 
 export function findKing16(b: Board16, color: PlayerColor16): Square16 | null {
@@ -503,7 +551,7 @@ function evaluateMoveQuality16(
   let score = 0;
   const pv: Record<PieceType16, number> = {
     "mystic-king":10,"super-queen":9,"dragon":8,"gargoyle":7,"sorceress":7,
-    "wizard":6,"warlock":6,"conjurer":6,"trickster":6,"thief":5,
+    "wizard":6,"warlock":6,"conjurer":6,"trickster":6,"thief":5,"berserker":8,
     "assassin":6,"elvin-archer":5,"aerobat-assassin":5,"super-knight":5,
     "executioner":5,"cavalier":4,"mage":4,"paladin":2,"archer":4,
   };
@@ -688,7 +736,7 @@ export function advanceTurn16(state: GameState16): GameState16 {
   let ns = cloneState16(state);
   ns.specialMode = null; ns.specialData = null; ns.spellMessage = null;
   ns.pendingAxeSquare = null; ns.selectedSquare = null; ns.validMoves = [];
-  ns.superMoves = []; ns.superMoveMode = false;
+  ns.superMoves = []; ns.superMoveMode = false; ns.castleMoves = [];
   ns.justEliminated = null;
   // A resolved (or abandoned) Wish dice roll must never survive a turn
   // transition — otherwise handleClick's "a dice roll is awaiting
@@ -808,7 +856,7 @@ export function executeMove16(state: GameState16, from: Square16, to: Square16):
   board[from.row][from.col] = null;
   ns.lastMove = { from, to };
   ns.selectedSquare = null; ns.validMoves = [];
-  ns.superMoves = []; ns.superMoveMode = false;
+  ns.superMoves = []; ns.superMoveMode = false; ns.castleMoves = [];
   ns.specialMode = null; ns.specialData = null; ns.spellMessage = null; ns.wishDiceResult = null;
 
   ns = applyEliminationCheck16(ns);
@@ -846,6 +894,32 @@ export function executeMove16(state: GameState16, from: Square16, to: Square16):
     ns.validMoves = getLegalMoves16(board, to.row, to.col, ns.turnOrder);
     return ns;
   }
+
+  return advanceTurn16(ns);
+}
+
+// ─── PALADIN REVERSE CASTLE (execute) ───────────────────────────────────────
+// Mirrors executeCastle in rules-8x8.ts: swap the paladin and the ally in
+// place, mark both as moved, then end the turn via the engine's own
+// advanceTurn16 (which handles elimination/check/sleep-tick/turn-order —
+// unlike 8x8's simpler white/black toggle).
+export function executeCastle16(state: GameState16, from: Square16, to: Square16): GameState16 {
+  let ns = cloneState16(state);
+  const board = ns.board;
+  const paladin = board[from.row][from.col];
+  const ally = board[to.row][to.col];
+  if (!paladin || paladin.type !== "paladin" || !ally || ally.type === "paladin" || ally.color !== paladin.color) {
+    return state;
+  }
+
+  board[from.row][from.col] = { ...ally, hasMoved: true };
+  board[to.row][to.col] = { ...paladin, hasMoved: true };
+
+  ns.lastMove = { from, to };
+  ns.lastMoveQuality = null;
+  ns.selectedSquare = null; ns.validMoves = [];
+  ns.superMoves = []; ns.superMoveMode = false; ns.castleMoves = [];
+  ns.specialMode = null; ns.specialData = null; ns.spellMessage = null; ns.wishDiceResult = null;
 
   return advanceTurn16(ns);
 }
@@ -909,5 +983,110 @@ export function applyTricksterTeleport16(b: Board16, pSq: Square16, dSq: Square1
   if (!p) return nb;
   nb[dSq.row][dSq.col] = p;
   nb[pSq.row][pSq.col] = null;
+  return nb;
+}
+
+// ─── BERSERKER — special crowd/rampage attack (one-time) ─────────────────────
+// Cleaves through exactly 2 adjacent, in-line enemy pieces in a single
+// attack: the square immediately next to the Berserker ("mid") and the
+// square directly beyond it on the same line ("far") must both be occupied
+// by enemies. Both are eliminated and the Berserker ends up on "far" — a
+// piercing charge, mirroring how the Thief ends up on the square it steals.
+// Wholly separate from getRawMoves16/getLegalMoves16, exactly like the
+// Paladin's one-time Super Move, so it never appears as a normal move.
+export function getBerserkerRampageTargets16(b: Board16, r: number, c: number, color: PlayerColor16): { mid: Square16; far: Square16 }[] {
+  const p = b[r][c];
+  if (!p || p.type !== "berserker" || p.berserkerRampageUsed || p.sleepRoundsLeft > 0 || p.boundRoundsLeft > 0) return [];
+  const out: { mid: Square16; far: Square16 }[] = [];
+  for (const [dr, dc] of ALL8_16) {
+    const midR = r + dr, midC = c + dc, farR = r + dr * 2, farC = c + dc * 2;
+    if (!inB16(midR, midC) || !inB16(farR, farC)) continue;
+    const mid = b[midR][midC], far = b[farR][farC];
+    if (mid && far && mid.color !== color && far.color !== color) {
+      out.push({ mid: { row: midR, col: midC }, far: { row: farR, col: farC } });
+    }
+  }
+  return out;
+}
+
+export function getLegalBerserkerRampageTargets16(b: Board16, row: number, col: number, active: PlayerColor16[]): { mid: Square16; far: Square16 }[] {
+  const p = b[row][col];
+  if (!p) return [];
+  return getBerserkerRampageTargets16(b, row, col, p.color).filter(({ mid, far }) => {
+    const t = cloneBoard16(b);
+    t[far.row][far.col] = t[row][col];
+    t[row][col] = null;
+    t[mid.row][mid.col] = null;
+    return !isKingInCheck16(t, p.color, active);
+  });
+}
+
+export function applyBerserkerRampage16(state: GameState16, from: Square16, mid: Square16, far: Square16): GameState16 {
+  let ns = cloneState16(state);
+  const board = ns.board;
+  const piece = board[from.row][from.col];
+  if (!piece || piece.type !== "berserker") return advanceTurn16(ns);
+  const midTarget = board[mid.row][mid.col];
+  const farTarget = board[far.row][far.col];
+  if (midTarget) ns.capturedBy[piece.color].push(midTarget);
+  if (farTarget) ns.capturedBy[piece.color].push(farTarget);
+  board[mid.row][mid.col] = null;
+  board[far.row][far.col] = { ...piece, berserkerRampageUsed: true, hasMoved: true };
+  board[from.row][from.col] = null;
+  ns.lastMove = { from, to: far };
+  ns.selectedSquare = null; ns.validMoves = [];
+  ns.superMoves = []; ns.superMoveMode = false;
+  ns.specialMode = null; ns.specialData = null;
+  ns = applyEliminationCheck16(ns);
+  if (ns.status === "finished") return ns;
+  return advanceTurn16(ns);
+}
+
+// ─── CONJURER — one-time Shadow Spell (summons the Berserker) ────────────────
+// Finds the square directly in front of the Conjurer (toward the enemy side
+// of the board — up for white, down for black). If that square is occupied
+// or off the board, expands outward ring by ring from that point to find the
+// nearest empty square, reusing the same inB16 bounds check as every other
+// piece's placement logic. Never overwrites an occupied square.
+export function findShadowSummonSquare16(b: Board16, conjSq: Square16, color: PlayerColor16): Square16 | null {
+  const dr = color === "white" ? -1 : 1;
+  const front = { row: conjSq.row + dr, col: conjSq.col };
+  const start = inB16(front.row, front.col) ? front : conjSq;
+  if (inB16(front.row, front.col) && !b[front.row][front.col]) return front;
+  for (let radius = 1; radius <= 16; radius++) {
+    const candidates: Square16[] = [];
+    for (let dR = -radius; dR <= radius; dR++) {
+      for (let dC = -radius; dC <= radius; dC++) {
+        if (Math.max(Math.abs(dR), Math.abs(dC)) !== radius) continue;
+        const rr = start.row + dR, cc = start.col + dC;
+        if (inB16(rr, cc) && !b[rr][cc]) candidates.push({ row: rr, col: cc });
+      }
+    }
+    if (candidates.length > 0) {
+      candidates.sort((a, bq) => {
+        const da = Math.abs(a.row - start.row) + Math.abs(a.col - start.col);
+        const db = Math.abs(bq.row - start.row) + Math.abs(bq.col - start.col);
+        if (da !== db) return da - db;
+        if (a.row !== bq.row) return a.row - bq.row;
+        return a.col - bq.col;
+      });
+      return candidates[0];
+    }
+  }
+  return null;
+}
+
+// Summons the Berserker as a brand-new real game piece — never touches or
+// removes any existing piece. Consumes the Conjurer's one-time Shadow Spell
+// charge only on success; if no empty square exists anywhere (never happens
+// in practice on a 16x16 board), the spell is left unconsumed.
+export function applyShadowSummon16(b: Board16, conjSq: Square16): Board16 {
+  const nb = cloneBoard16(b);
+  const conjurer = nb[conjSq.row][conjSq.col];
+  if (!conjurer || conjurer.type !== "conjurer" || conjurer.conjurerShadowSpellUsed) return nb;
+  const dest = findShadowSummonSquare16(nb, conjSq, conjurer.color);
+  if (!dest) return nb;
+  nb[dest.row][dest.col] = mkP16("berserker", conjurer.color, `berserker-${conjurer.color}-${Date.now()}`);
+  nb[conjSq.row][conjSq.col] = { ...conjurer, conjurerShadowSpellUsed: true };
   return nb;
 }

@@ -40,6 +40,17 @@ export default function BoardPage() {
   const resolvedRef = useRef(false);
   const mode = getModeFromRoomId(roomId);
 
+  // Live Pulse "Games Played" counter — fire-and-forget ping when a room's board mounts.
+  // Purely additive analytics; does not touch any game/board logic.
+  useEffect(() => {
+    if (!roomId) return;
+    fetch("/api/games-played", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roomId }),
+    }).catch(() => {});
+  }, [roomId]);
+
   useEffect(() => {
     const socket = connectSocket();
     socketRef.current = socket;

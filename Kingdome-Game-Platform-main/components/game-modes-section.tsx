@@ -1,18 +1,29 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef } from "react"
 import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 import * as THREE from "three"
+import { Plus, Swords, Play } from "lucide-react"
+
+// The big faint background letter matches the board's kingdom system, per the reference design.
+const GROUP_LETTER: Record<string, string> = { Classic: "C", Tri: "T", X: "X" }
+
+const SPARKLES = [
+  { top: "8%", left: "62%", size: 5 },
+  { top: "18%", left: "88%", size: 4 },
+  { top: "42%", left: "70%", size: 3 },
+  { top: "55%", left: "92%", size: 4 },
+]
 
 /* ──────────────────────────────────────────────────────────────
    DATA (unchanged)
 ─────────────────────────────────────────────────────────────── */
 const products = [
+  // ── Classic Boards ──
   {
-    id: "kc-style-8x8",
-    name: "KC Style 8x8",
+    id: "kc-classic-8x8",
+    name: "Classic 8x8",
+    group: "Classic",
     players: "2 Player",
     boardSize: "8x8",
     price: 20,
@@ -21,28 +32,9 @@ const products = [
     featured: false,
   },
   {
-    id: "kc-tri-8x8",
-    name: "KC Tri-Board 8x8",
-    players: "3 Player",
-    boardSize: "8x8",
-    price: 30,
-    description: "Phantom Dimension mode. Three kingdoms clash in an epic triangular battle.",
-    status: "Available Now",
-    featured: false,
-  },
-  {
-    id: "kc-quad-8x8",
-    name: "KC Quad X 8x8",
-    players: "4 Player",
-    boardSize: "8x8",
-    price: 40,
-    description: "Four-way warfare on a classic board. Alliances form and break.",
-    status: "Available Now",
-    featured: false,
-  },
-  {
-    id: "kc-duel-12x12",
-    name: "KC Duel 12x12",
+    id: "kc-classic-12x12",
+    name: "Classic 12x12",
+    group: "Classic",
     players: "2 Player",
     boardSize: "12x12",
     price: 40,
@@ -51,8 +43,32 @@ const products = [
     featured: true,
   },
   {
+    id: "kc-classic-16x16",
+    name: "Classic 16x16",
+    group: "Classic",
+    players: "2 Player",
+    boardSize: "16x16",
+    price: 60,
+    description: "Beware the Trickster. Expert mode for masters of the realm. The ultimate challenge.",
+    status: "Available Now",
+    featured: true,
+  },
+  // ── Tri Boards ──
+  {
+    id: "kc-tri-8x8",
+    name: "Tri 8x8",
+    group: "Tri",
+    players: "3 Player",
+    boardSize: "8x8",
+    price: 30,
+    description: "Phantom Dimension mode. Three kingdoms clash in an epic triangular battle.",
+    status: "Available Now",
+    featured: false,
+  },
+  {
     id: "kc-tri-12x12",
-    name: "KC Tri-Board 12x12",
+    name: "Tri 12x12",
+    group: "Tri",
     players: "3 Player",
     boardSize: "12x12",
     price: 50,
@@ -61,8 +77,32 @@ const products = [
     featured: true,
   },
   {
-    id: "kc-quad-12x12",
-    name: "KC Quad X Parabellum 12x12",
+    id: "kc-tri-16x16",
+    name: "Tri 16x16",
+    group: "Tri",
+    players: "3 Player",
+    boardSize: "16x16",
+    price: 75,
+    description: "The ultimate three-kingdom war. Every Empire piece, every spell, three armies fighting to the last banner.",
+    status: "Available Now",
+    featured: true,
+  },
+  // ── X Boards ──
+  {
+    id: "kc-x-8x8",
+    name: "X 8x8",
+    group: "X",
+    players: "4 Player",
+    boardSize: "8x8",
+    price: 40,
+    description: "Four-way warfare on a classic board. Alliances form and break.",
+    status: "Available Now",
+    featured: false,
+  },
+  {
+    id: "kc-x-12x12",
+    name: "X 12x12",
+    group: "X",
     players: "4 Player",
     boardSize: "12x12",
     price: 60,
@@ -71,12 +111,13 @@ const products = [
     featured: true,
   },
   {
-    id: "kc-mastery-16x16",
-    name: "KC Mastery 16x16",
-    players: "2 Player",
+    id: "kc-x-16x16",
+    name: "X 16x16",
+    group: "X",
+    players: "4 Player",
     boardSize: "16x16",
-    price: 60,
-    description: "Beware the Trickster. Expert mode for masters of the realm. The ultimate challenge.",
+    price: 90,
+    description: "Four Empire kingdoms collide from every side. The largest, longest, most punishing battle in the realm.",
     status: "Available Now",
     featured: true,
   },
@@ -168,131 +209,140 @@ function ThreeBackground() {
 }
 
 /* ──────────────────────────────────────────────────────────────
-   PRODUCT CARD — 3D hover, medieval gold/black theme
+   PRODUCT CARD — matches the reference design in public/modes-card
+   (stable, no motion — a static premium stat-card, not a photo card)
 ─────────────────────────────────────────────────────────────── */
 function ProductCard({ product }: { product: typeof products[0] }) {
-  const [rotateX, setRotateX] = useState(0)
-  const [rotateY, setRotateY] = useState(0)
-
-  const handleMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const el = e.currentTarget
-    const rect = el.getBoundingClientRect()
-    const x = (e.clientX - rect.left) / rect.width - 0.5
-    const y = (e.clientY - rect.top) / rect.height - 0.5
-    setRotateX(y * -12)
-    setRotateY(x * 12)
-  }
-
-  const handleLeave = () => {
-    setRotateX(0)
-    setRotateY(0)
-  }
+  const letter = GROUP_LETTER[product.group] ?? product.group.charAt(0)
 
   return (
     <div
-      onMouseMove={handleMove}
-      onMouseLeave={handleLeave}
-      className={cn(
-        "relative group rounded-xl border border-[#c9a84c]/30 bg-[#050508]/85 overflow-hidden",
-        "transition-all duration-300 hover:shadow-[0_0_40px_rgba(201,168,76,0.25)]",
-        product.featured ? "ring-1 ring-[#c9a84c]/50" : ""
-      )}
+      className="relative rounded-3xl overflow-hidden transition-colors duration-300 hover:border-[#e8c96a]/60"
       style={{
-        transform: `perspective(1200px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`,
-        transformStyle: "preserve-3d",
+        background: "#060504",
+        border: "1px solid rgba(201,168,76,0.35)",
+        boxShadow: "0 20px 50px rgba(0,0,0,0.55)",
       }}
     >
-      {/* Featured badge */}
+      {/* ambient top glow */}
+      <div
+        className="pointer-events-none absolute -top-16 right-0 w-64 h-64 rounded-full"
+        style={{ background: "radial-gradient(circle, rgba(201,168,76,0.35), transparent 70%)", filter: "blur(20px)" }}
+      />
+
+      {/* giant watermark letter — matches this board's kingdom system */}
+      <div
+        className="pointer-events-none absolute top-0 right-0 select-none font-serif font-bold"
+        style={{ fontSize: 210, lineHeight: 1, color: "rgba(201,168,76,0.1)", transform: "translate(8%, -10%)" }}
+      >
+        {letter}
+      </div>
+
+      {/* faint diagonal rune grid */}
+      <div
+        className="pointer-events-none absolute top-0 right-0 w-2/3 h-56"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(45deg, rgba(201,168,76,0.07) 0 1px, transparent 1px 26px), repeating-linear-gradient(-45deg, rgba(201,168,76,0.07) 0 1px, transparent 1px 26px)",
+          maskImage: "radial-gradient(ellipse at top right, black, transparent 75%)",
+        }}
+      />
+
+      {/* sparkle diamonds */}
+      {SPARKLES.map((s, i) => (
+        <span
+          key={i}
+          className="pointer-events-none absolute"
+          style={{ top: s.top, left: s.left, color: "rgba(201,168,76,0.5)", fontSize: s.size }}
+        >
+          ◆
+        </span>
+      ))}
+
       {product.featured && (
-        <div className="absolute top-4 right-4 z-20 px-2 py-1 bg-[#c9a84c] text-[#050508] text-[10px] font-bold uppercase tracking-widest rounded">
+        <div className="absolute top-6 right-6 z-20 px-2 py-1 bg-[#c9a84c] text-[#050508] text-[10px] font-bold uppercase tracking-widest rounded">
           Featured
         </div>
       )}
 
-      {/* 3D board visual — golden grid with depth */}
-      <div className="h-40 bg-gradient-to-br from-[#0b0a09] to-[#050508] flex items-center justify-center border-b border-[#c9a84c]/25 relative overflow-hidden">
-        <div
-          className="grid gap-0.5 opacity-70"
-          style={{
-            gridTemplateColumns: `repeat(${parseInt(product.boardSize)}, 1fr)`,
-            width: "90px",
-            height: "90px",
-            transform: "rotateX(20deg) rotateY(-10deg)",
-            filter: "drop-shadow(0 0 6px rgba(201,168,76,0.35))",
-          }}
-        >
-          {Array.from({ length: parseInt(product.boardSize) * parseInt(product.boardSize) }).map((_, i) => (
-            <div
-              key={i}
-              className={cn(
-                "w-full h-full",
-                (Math.floor(i / parseInt(product.boardSize)) + i) % 2 === 0
-                  ? "bg-[#c9a84c]/30"
-                  : "bg-[#c9a84c]/10"
-              )}
-            />
-          ))}
-        </div>
-        {/* golden glow orb */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(201,168,76,0.18),transparent_70%)]" />
-      </div>
-
       {/* Content */}
-      <div className="p-6 relative z-10" style={{ transform: "translateZ(20px)" }}>
-        <div className="flex items-start justify-between mb-2">
-          <h3 className="font-serif text-xl text-[#f4ddb0] drop-shadow-[0_0_10px_rgba(201,168,76,0.25)]">
-            {product.name}
-          </h3>
+      <div className="relative z-10 p-7">
+        <div
+          className="inline-flex items-center justify-center w-9 h-9 rounded-lg mb-6"
+          style={{ border: "1px solid rgba(201,168,76,0.4)" }}
+        >
+          <Plus className="w-4 h-4" style={{ color: "#c9a84c" }} />
         </div>
 
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-[11px] px-2 py-1 bg-[#c9a84c]/10 text-[#c9a84c] rounded border border-[#c9a84c]/20">
+        <p className="text-[11px] font-bold uppercase tracking-[0.2em] mb-2" style={{ color: "#c9a84c" }}>
+          Kingdom Series
+        </p>
+        <h3
+          className="font-serif font-bold uppercase mb-4"
+          style={{ fontSize: "clamp(26px, 5vw, 36px)", color: "#f4ecd8", lineHeight: 1.05 }}
+        >
+          {product.name}
+        </h3>
+
+        <div className="flex items-center gap-2 mb-5">
+          <span
+            className="text-[11px] px-3 py-1.5 rounded-full border"
+            style={{ borderColor: "rgba(201,168,76,0.4)", color: "#c9a84c" }}
+          >
             {product.players}
           </span>
-          <span className="text-[11px] px-2 py-1 bg-[#0b0a09] text-[#e8dfc8] rounded border border-[#c9a84c]/15">
+          <span
+            className="text-[11px] px-3 py-1.5 rounded-full border"
+            style={{ borderColor: "rgba(201,168,76,0.4)", color: "#c9a84c" }}
+          >
             {product.boardSize}
           </span>
         </div>
 
-        <p className="text-sm text-[#c9a84c]/70 leading-relaxed mb-4">{product.description}</p>
+        <p className="text-sm leading-relaxed mb-6" style={{ color: "rgba(232,223,200,0.55)" }}>
+          {product.description}
+        </p>
 
-        {/* Price */}
         <div className="flex items-baseline gap-2 mb-4">
-          <span className="text-3xl font-serif text-[#c9a84c] drop-shadow-[0_0_10px_rgba(201,168,76,0.3)]">
+          <span className="font-serif font-bold" style={{ fontSize: 38, color: "#c9a84c" }}>
             ${product.price}
           </span>
-          <span className="text-[11px] text-[#c9a84c]/50 uppercase tracking-widest">USD</span>
+          <span className="text-xs uppercase tracking-widest" style={{ color: "rgba(201,168,76,0.6)" }}>
+            USD
+          </span>
         </div>
 
-        {/* Status */}
         <div className="flex items-center gap-2 mb-6">
-          <span className="w-2 h-2 bg-[#c9a84c] rounded-full animate-pulse shadow-[0_0_8px_#c9a84c]" />
-          <span className="text-[11px] text-[#c9a84c]/80 uppercase tracking-widest">{product.status}</span>
+          <span className="w-2 h-2 rounded-full" style={{ background: "#4ade80" }} />
+          <span className="text-xs font-bold uppercase tracking-widest" style={{ color: "#4ade80" }}>
+            {product.status}
+          </span>
         </div>
 
-        {/* Actions */}
-        <div className="flex flex-col gap-2">
-          <Button
-            asChild
-            className="bg-[#c9a84c] text-[#050508] hover:bg-[#e8c96a] hover:shadow-[0_0_20px_rgba(201,168,76,0.45)] transition-all"
-          >
-            <Link href={`#order?board=${product.id}`}>⚔ Order Now</Link>
-          </Button>
-          <Button
-            asChild
-            variant="outline"
-            className="border-[#c9a84c]/30 text-[#c9a84c] hover:bg-[#c9a84c]/10 hover:border-[#c9a84c]/60 transition-all"
-          >
-            <Link href="#play">▶ Play Online Free</Link>
-          </Button>
+        <Link
+          href={`#order?board=${product.id}`}
+          className="flex items-center justify-center gap-2 w-full py-3.5 rounded-xl font-bold text-sm transition-shadow duration-300 hover:shadow-[0_10px_30px_rgba(201,168,76,0.35)]"
+          style={{ background: "linear-gradient(135deg, #d4a843, #e8c96a)", color: "#1a0d00" }}
+        >
+          <Swords className="w-4 h-4" />
+          Order Now
+        </Link>
+
+        <div className="flex items-center gap-3 my-5">
+          <div className="flex-1 h-px" style={{ background: "rgba(201,168,76,0.25)" }} />
+          <span style={{ color: "#c9a84c", fontSize: 6 }}>◆</span>
+          <div className="flex-1 h-px" style={{ background: "rgba(201,168,76,0.25)" }} />
         </div>
+
+        <Link
+          href="#play"
+          className="flex items-center justify-center gap-2 text-sm font-medium transition-colors duration-300 hover:text-[#e8c96a]"
+          style={{ color: "#c9a84c" }}
+        >
+          <Play className="w-3.5 h-3.5" />
+          Play Online Free
+        </Link>
       </div>
-
-      {/* corner accents for medieval vibe */}
-      <div className="pointer-events-none absolute top-2 left-2 w-2 h-2 border-t border-l border-[#c9a84c]/40" />
-      <div className="pointer-events-none absolute top-2 right-2 w-2 h-2 border-t border-r border-[#c9a84c]/40" />
-      <div className="pointer-events-none absolute bottom-2 left-2 w-2 h-2 border-b border-l border-[#c9a84c]/40" />
-      <div className="pointer-events-none absolute bottom-2 right-2 w-2 h-2 border-b border-r border-[#c9a84c]/40" />
     </div>
   )
 }
@@ -315,14 +365,14 @@ export function GameModesSection() {
             Game Modes
           </h2>
           <p className="text-[#c9a84c]/60 max-w-2xl mx-auto text-sm leading-relaxed">
-            Seven unique board configurations await. From classic 2-player duels to epic 4-player battles,
+            Nine unique battlefields await. From classic 2-player duels to epic 4-player campaigns,
             find your perfect battlefield — forged in gold, ruled by strategy.
           </p>
           <div className="w-24 h-1 bg-gradient-to-r from-transparent via-[#c9a84c] to-transparent mx-auto mt-4" />
         </div>
 
         {/* Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {products.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}

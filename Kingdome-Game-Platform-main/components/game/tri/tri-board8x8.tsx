@@ -188,9 +188,29 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 // ─── CONTROL CARD — modern expandable action button used in the right panel,
 // same premium icon-badge + title/subtitle pattern as the X 8x8 board's
 // "Game Controls" list ──────────────────────────────────────────────────────
-function ControlCard({ icon, title, subtitle, accent, onClick, disabled }: {
-  icon: string; title: string; subtitle: string; accent: string; onClick: () => void; disabled?: boolean;
+// `standardized` renders the shared cross-board control-card look (uniform
+// gold/brown gradient + uniform icon badge) used by Pass Turn / Battle Guide /
+// Game Rules / Quit Game. The conditional Super Attack card keeps the
+// original per-accent-color rendering untouched.
+function ControlCard({ icon, title, subtitle, accent, onClick, disabled, standardized }: {
+  icon: string; title: string; subtitle: string; accent: string; onClick: () => void; disabled?: boolean; standardized?: boolean;
 }) {
+  if (standardized) {
+    return (
+      <button
+        className="tb-ctrl-btn tb-ctrl-btn-std"
+        onClick={onClick}
+        disabled={disabled}
+        style={{ opacity: disabled ? 0.5 : 1, cursor: disabled ? "default" : "pointer" }}
+      >
+        <span className="tb-ctrl-icon" style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(212,168,67,.18)", border: "1px solid rgba(212,168,67,.4)" }}>{icon}</span>
+        <span style={{ minWidth: 0, textAlign: "left" }}>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: "#ffffff", letterSpacing: ".06em", textTransform: "uppercase" }}>{title}</p>
+          {subtitle && <p style={{ margin: "2px 0 0", fontSize: 10.5, color: "rgba(255,255,255,.55)", lineHeight: 1.35 }}>{subtitle}</p>}
+        </span>
+      </button>
+    );
+  }
   return (
     <button className="tb-ctrl-btn" onClick={onClick} disabled={disabled}
       style={{
@@ -212,7 +232,7 @@ function TbModal({ title, subtitle, icon, onClose, children }: {
 }) {
   return (
     <div className="tb-modal-backdrop" onClick={onClose}>
-      <div className="tb-modal-card" onClick={(e) => e.stopPropagation()}>
+      <div className="tb-modal-card" data-lenis-prevent onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 24, color: GOLD, fontFamily: "'Cinzel',Georgia,serif" }}>{icon} {title}</h2>
@@ -223,6 +243,71 @@ function TbModal({ title, subtitle, icon, onClose, children }: {
         {children}
       </div>
     </div>
+  );
+}
+
+// ─── GAME RULES MODAL — merges the former "Tri Rules" and "Game Flow /
+// Victory" modals into a single modal with two tabs, so both bodies of
+// content stay available (verbatim) from one consolidated button ──────────
+function GameRulesModal({ onClose }: { onClose: () => void }) {
+  const [tab, setTab] = useState<"rules" | "flow">("rules");
+
+  return (
+    <TbModal title="Game Rules" subtitle="How to Play · Game Flow & Victory" icon="📜" onClose={onClose}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        <button className={tab === "rules" ? "tb-tab-btn tb-tab-active" : "tb-tab-btn"} onClick={() => setTab("rules")}>How to Play</button>
+        <button className={tab === "flow" ? "tb-tab-btn tb-tab-active" : "tb-tab-btn"} onClick={() => setTab("flow")}>Game Flow & Victory</button>
+      </div>
+
+      {tab === "rules" && (
+        <>
+          <div className="tb-modal-scroll" style={{ maxHeight: "58vh", overflowY: "auto", display: "grid", gap: 10, paddingRight: 4 }}>
+            {RULES.map((r, i) => (
+              <div key={i} className="tb-rule-card">
+                <div className="tb-rule-num">{i + 1}</div>
+                <div>
+                  <div style={{ color: "#f0dfb0", fontWeight: 800, fontSize: 13, marginBottom: 3, letterSpacing: ".03em" }}>{r.title}</div>
+                  <div style={{ color: "rgba(255,255,255,.68)", fontSize: 12.5, lineHeight: 1.6 }}>{r.body}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ textAlign: "center", padding: "14px 0 0", borderTop: "1px solid rgba(212,168,67,.12)", marginTop: 14 }}>
+            <p style={{ margin: 0, fontSize: 11, color: "rgba(212,168,67,.4)", fontStyle: "italic" }}>"Three crowns, one Tri Gate — only one kingdom walks away."</p>
+          </div>
+        </>
+      )}
+
+      {tab === "flow" && (
+        <>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: 14, padding: "4px 0 18px" }}>
+            {GAME_FLOW.map((step, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, width: 96 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(0,0,0,.5)", border: "1px solid rgba(212,168,67,.35)", display: "flex", alignItems: "center", justifyContent: "center" }}>{step.icon}</div>
+                  <div style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,.7)", lineHeight: 1.35 }}>
+                    <div>{step.lines[0]}</div>
+                    <div>{step.lines[1]}</div>
+                  </div>
+                </div>
+                {i < GAME_FLOW.length - 1 && <span style={{ color: GOLD, fontSize: 18, opacity: 0.6 }}>→</span>}
+              </div>
+            ))}
+          </div>
+          <div className="tb-modal-scroll" style={{ maxHeight: "44vh", overflowY: "auto", display: "grid", gap: 10, paddingRight: 4, borderTop: "1px solid rgba(212,168,67,.12)", paddingTop: 14 }}>
+            {VICTORY_RULES.map((r, i) => (
+              <div key={i} className="tb-rule-card">
+                <div className="tb-rule-num">{i + 1}</div>
+                <div>
+                  <div style={{ color: "#f0dfb0", fontWeight: 800, fontSize: 13, marginBottom: 3, letterSpacing: ".03em" }}>{r.title}</div>
+                  <div style={{ color: "rgba(255,255,255,.68)", fontSize: 12.5, lineHeight: 1.6 }}>{r.body}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </TbModal>
   );
 }
 
@@ -321,9 +406,8 @@ export default function TriBoard8x8({
   const [triSqPx, setTriSqPx] = useState(30);
   const [kingdomSqPxState, setKingdomSqPxState] = useState(26);
   const [tier, setTier] = useState<LayoutTier>("desktop");
-  const [showTriRules, setShowTriRules] = useState(false);
-  const [showPieceAbilities, setShowPieceAbilities] = useState(false);
-  const [showGameFlow, setShowGameFlow] = useState(false);
+  const [showBattleGuide, setShowBattleGuide] = useState(false);
+  const [showGameRules, setShowGameRules] = useState(false);
   const gsRef = useRef(gs);
 
   useEffect(() => {
@@ -775,6 +859,13 @@ export default function TriBoard8x8({
         .tb-ctrl-btn:active:not(:disabled){transform:translateY(0) scale(.98);}
         .tb-ctrl-btn:disabled{cursor:default;}
         .tb-ctrl-icon{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;font-size:15px;flex-shrink:0;}
+        .tb-ctrl-btn.tb-ctrl-btn-std{background:linear-gradient(160deg, #5c3d1f 0%, #2a1a0a 100%);border:1px solid rgba(212,168,67,.35);border-radius:14px;padding:13px 14px;box-shadow:0 8px 20px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08);transition:all .18s ease;}
+        .tb-ctrl-btn.tb-ctrl-btn-std:hover:not(:disabled){transform:translateY(-2px);background:linear-gradient(160deg, #6b4726 0%, #331f0d 100%);box-shadow:0 12px 26px rgba(0,0,0,.55);}
+        .tb-ctrl-btn.tb-ctrl-btn-std:active:not(:disabled){transform:translateY(0) scale(.98);}
+        .tb-ctrl-btn.tb-ctrl-btn-std:disabled{opacity:.5;cursor:default;}
+        .tb-tab-btn{padding:8px 16px;border-radius:10px;border:1px solid rgba(212,168,67,.25);background:rgba(255,255,255,.03);color:rgba(255,255,255,.6);font-family:'Cinzel',Georgia,serif;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;transition:all .18s ease;}
+        .tb-tab-btn:hover{background:rgba(212,168,67,.08);color:#fff;}
+        .tb-tab-btn.tb-tab-active{background:rgba(212,168,67,.16);border-color:rgba(212,168,67,.55);color:#f0dfb0;box-shadow:inset 0 1px 0 rgba(255,255,255,.08);}
         .tb-modal-backdrop{position:fixed;inset:0;z-index:960;background:rgba(0,0,0,.88);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:center;padding:20px;animation:panelFadeUp .25s ease both;}
         .tb-modal-card{width:min(820px,94vw);max-height:88vh;overflow-y:auto;border-radius:24px;padding:28px 26px;background:linear-gradient(155deg,#0e0902 0%,#1a1005 45%,#0e0902 100%);border:1px solid rgba(212,168,67,.28);box-shadow:0 40px 100px rgba(0,0,0,.85),0 0 60px rgba(212,168,67,.08),inset 0 1px 0 rgba(255,255,255,.05);font-family:'Cinzel',Georgia,serif;}
         .tb-modal-close{width:38px;height:38px;border-radius:11px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:rgba(255,255,255,.55);cursor:pointer;font-size:16px;flex-shrink:0;transition:background .15s,color .15s;}
@@ -923,16 +1014,14 @@ export default function TriBoard8x8({
                     disabled={paladinSuperUsed}
                     onClick={() => { if (!paladinSuperUsed) handleSuperAttack(); }} />
                 )}
-                <ControlCard icon="⏩" accent="#60a5fa" title="Pass Turn" subtitle="Skip your turn"
+                <ControlCard standardized icon="⏩" accent="#60a5fa" title="Pass Turn" subtitle="Skip your turn"
                   disabled={!isMyTurn} onClick={handlePass} />
-                <ControlCard icon="📜" accent="#4ade80" title="Tri Rules" subtitle="How to play and win"
-                  onClick={() => setShowTriRules(true)} />
-                <ControlCard icon="🛡️" accent="#c084fc" title="Piece Abilities" subtitle="Every piece and its powers"
-                  onClick={() => setShowPieceAbilities(true)} />
-                <ControlCard icon="🏆" accent="#ffb347" title="Game Flow / Victory" subtitle="From kingdom to conquest"
-                  onClick={() => setShowGameFlow(true)} />
+                <ControlCard standardized icon="📖" accent="#c084fc" title="Battle Guide" subtitle="Every piece and its powers"
+                  onClick={() => setShowBattleGuide(true)} />
+                <ControlCard standardized icon="📜" accent="#4ade80" title="Game Rules" subtitle="How to play and win"
+                  onClick={() => setShowGameRules(true)} />
                 {gs.status === "playing" && !gs.eliminatedPlayers.includes(myColor) && (
-                  <ControlCard icon="🚩" accent="#f87171" title="Quit Game" subtitle="Exit the current match"
+                  <ControlCard standardized icon="🚩" accent="#f87171" title="Quit Game" subtitle="Exit the current match"
                     onClick={() => setShowLeaveConfirm(true)} />
                 )}
               </div>
@@ -940,29 +1029,9 @@ export default function TriBoard8x8({
           </div>
         </div>
 
-        {/* ── TRI RULES MODAL ── */}
-        {showTriRules && (
-          <TbModal title="Tri Board Rules" subtitle="Kingdoms · Tri Gate · Combat" icon="⚔️" onClose={() => setShowTriRules(false)}>
-            <div className="tb-modal-scroll" style={{ maxHeight: "64vh", overflowY: "auto", display: "grid", gap: 10, paddingRight: 4 }}>
-              {RULES.map((r, i) => (
-                <div key={i} className="tb-rule-card">
-                  <div className="tb-rule-num">{i + 1}</div>
-                  <div>
-                    <div style={{ color: "#f0dfb0", fontWeight: 800, fontSize: 13, marginBottom: 3, letterSpacing: ".03em" }}>{r.title}</div>
-                    <div style={{ color: "rgba(255,255,255,.68)", fontSize: 12.5, lineHeight: 1.6 }}>{r.body}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{ textAlign: "center", padding: "14px 0 0", borderTop: "1px solid rgba(212,168,67,.12)", marginTop: 14 }}>
-              <p style={{ margin: 0, fontSize: 11, color: "rgba(212,168,67,.4)", fontStyle: "italic" }}>"Three crowns, one Tri Gate — only one kingdom walks away."</p>
-            </div>
-          </TbModal>
-        )}
-
-        {/* ── PIECE ABILITIES MODAL ── */}
-        {showPieceAbilities && (
-          <TbModal title="Piece Abilities" subtitle="Movement · Powers · Combat" icon="🛡️" onClose={() => setShowPieceAbilities(false)}>
+        {/* ── BATTLE GUIDE MODAL (formerly "Piece Abilities") ── */}
+        {showBattleGuide && (
+          <TbModal title="Battle Guide" subtitle="Movement · Powers · Combat" icon="📖" onClose={() => setShowBattleGuide(false)}>
             <div className="tb-modal-scroll" style={{ maxHeight: "68vh", overflowY: "auto", display: "grid", gridTemplateColumns: isCompact ? "1fr" : "1fr 1fr", gap: 14, paddingRight: 4 }}>
               {(Object.keys(PIECE_INFO) as PieceType[]).map((type) => (
                 <div key={type} className="tb-piece-card">
@@ -977,36 +1046,8 @@ export default function TriBoard8x8({
           </TbModal>
         )}
 
-        {/* ── GAME FLOW / VICTORY RULES MODAL ── */}
-        {showGameFlow && (
-          <TbModal title="Game Flow & Victory" subtitle="From Kingdom to Conquest" icon="🏆" onClose={() => setShowGameFlow(false)}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: 14, padding: "4px 0 18px" }}>
-              {GAME_FLOW.map((step, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, width: 96 }}>
-                    <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(0,0,0,.5)", border: "1px solid rgba(212,168,67,.35)", display: "flex", alignItems: "center", justifyContent: "center" }}>{step.icon}</div>
-                    <div style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,.7)", lineHeight: 1.35 }}>
-                      <div>{step.lines[0]}</div>
-                      <div>{step.lines[1]}</div>
-                    </div>
-                  </div>
-                  {i < GAME_FLOW.length - 1 && <span style={{ color: GOLD, fontSize: 18, opacity: 0.6 }}>→</span>}
-                </div>
-              ))}
-            </div>
-            <div className="tb-modal-scroll" style={{ maxHeight: "50vh", overflowY: "auto", display: "grid", gap: 10, paddingRight: 4, borderTop: "1px solid rgba(212,168,67,.12)", paddingTop: 14 }}>
-              {VICTORY_RULES.map((r, i) => (
-                <div key={i} className="tb-rule-card">
-                  <div className="tb-rule-num">{i + 1}</div>
-                  <div>
-                    <div style={{ color: "#f0dfb0", fontWeight: 800, fontSize: 13, marginBottom: 3, letterSpacing: ".03em" }}>{r.title}</div>
-                    <div style={{ color: "rgba(255,255,255,.68)", fontSize: 12.5, lineHeight: 1.6 }}>{r.body}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </TbModal>
-        )}
+        {/* ── GAME RULES MODAL (merges former "Tri Rules" + "Game Flow / Victory") ── */}
+        {showGameRules && <GameRulesModal onClose={() => setShowGameRules(false)} />}
 
         {showLeaveConfirm && (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 998 }}>

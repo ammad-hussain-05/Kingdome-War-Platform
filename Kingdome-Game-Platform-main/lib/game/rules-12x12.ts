@@ -33,6 +33,9 @@ export interface GameState12 {
   // Paladin Super Move (one-time 3-square surprise attack) — kept wholly
   // separate from validMoves so it never appears as a normal move option.
   superMoves: Square12[]; superMoveMode: boolean;
+  // Paladin Reverse Castle — squares adjacent to the selected paladin
+  // occupied by a friendly non-paladin piece it can swap places with.
+  castleMoves: Square12[];
   status: "playing" | "finished"; winner: PlayerColor | null;
   lastMove: { from: Square12; to: Square12 } | null;
   check: PlayerColor | null;
@@ -59,6 +62,7 @@ export function cloneState12(s: GameState12): GameState12 {
     capturedBy: { white: [...s.capturedBy.white], black: [...s.capturedBy.black] },
     validMoves: [...s.validMoves],
     superMoves: [...s.superMoves],
+    castleMoves: [...s.castleMoves],
     specialData: s.specialData ? { ...s.specialData } : null,
   };
 }
@@ -144,6 +148,7 @@ export function createInitialGameState12(): GameState12 {
     capturedBy: { white: [], black: [] },
     selectedSquare: null, validMoves: [],
     superMoves: [], superMoveMode: false,
+    castleMoves: [],
     status: "playing", winner: null,
     lastMove: null, check: null,
     specialMode: null, specialData: null,
@@ -274,6 +279,28 @@ export function getPaladinSuperMoves12(b: Board12, r: number, c: number): Square
     const t = b[s.row][s.col];
     return !(t && (t.type === "wizard" || t.type === "sorceress"));
   });
+}
+
+// ─── PALADIN REVERSE CASTLE ────────────────────────────────────────────────
+// A paladin adjacent to a friendly non-paladin piece may swap places with it
+// (in any of the 8 directions), letting that piece "defend" the paladin.
+// Mirrors getCastleMoves in rules-8x8.ts exactly — no check-safety filtering,
+// same as that reference implementation.
+export function getCastleMoves12(board: Board12, row: number, col: number): Square12[] {
+  const piece = board[row][col];
+  if (!piece || piece.type !== "paladin") return [];
+  const moves: Square12[] = [];
+  for (const [dr, dc] of ALL8) {
+    const r = row + dr, c = col + dc;
+    if (!inB(r, c)) continue;
+    const ally = board[r][c];
+    if (ally && ally.color === piece.color && ally.type !== "paladin") moves.push({ row: r, col: c });
+  }
+  return moves;
+}
+
+export function getLegalCastleMoves12(board: Board12, row: number, col: number): Square12[] {
+  return getCastleMoves12(board, row, col);
 }
 
 export function findKing12(b: Board12, color: PlayerColor): Square12 | null {
@@ -489,7 +516,7 @@ export function advanceTurn(state: GameState12): GameState12 {
   let ns = cloneState12(state);
   ns.specialMode = null; ns.specialData = null; ns.spellMessage = null;
   ns.pendingAxeSquare = null; ns.selectedSquare = null; ns.validMoves = [];
-  ns.superMoves = []; ns.superMoveMode = false;
+  ns.superMoves = []; ns.superMoveMode = false; ns.castleMoves = [];
   ns.justEliminated = null;
   // A resolved (or abandoned) Wish dice roll must never survive a turn
   // transition — otherwise handleClick's "a dice roll is awaiting
@@ -560,7 +587,7 @@ export function executeMove12(state: GameState12, from: Square12, to: Square12):
   board[from.row][from.col] = null;
   ns.lastMove = { from, to };
   ns.selectedSquare = null; ns.validMoves = [];
-  ns.superMoves = []; ns.superMoveMode = false;
+  ns.superMoves = []; ns.superMoveMode = false; ns.castleMoves = [];
   ns.specialMode = null; ns.specialData = null; ns.spellMessage = null; ns.wishDiceResult = null;
 
   ns = applyEliminationCheck12(ns);
@@ -584,6 +611,32 @@ export function executeMove12(state: GameState12, from: Square12, to: Square12):
     ns.validMoves = getLegalMoves12(board, to.row, to.col, ns.turnOrder);
     return ns;
   }
+
+  return advanceTurn(ns);
+}
+
+// ─── PALADIN REVERSE CASTLE (execute) ───────────────────────────────────────
+// Mirrors executeCastle in rules-8x8.ts: swap the paladin and the ally in
+// place, mark both as moved, then end the turn via the engine's own
+// advanceTurn (which handles elimination/check/sleep-tick/turn-order —
+// unlike 8x8's simpler white/black toggle).
+export function executeCastle12(state: GameState12, from: Square12, to: Square12): GameState12 {
+  let ns = cloneState12(state);
+  const board = ns.board;
+  const paladin = board[from.row][from.col];
+  const ally = board[to.row][to.col];
+  if (!paladin || paladin.type !== "paladin" || !ally || ally.type === "paladin" || ally.color !== paladin.color) {
+    return state;
+  }
+
+  board[from.row][from.col] = { ...ally, hasMoved: true };
+  board[to.row][to.col] = { ...paladin, hasMoved: true };
+
+  ns.lastMove = { from, to };
+  ns.lastMoveQuality = null;
+  ns.selectedSquare = null; ns.validMoves = [];
+  ns.superMoves = []; ns.superMoveMode = false; ns.castleMoves = [];
+  ns.specialMode = null; ns.specialData = null; ns.spellMessage = null; ns.wishDiceResult = null;
 
   return advanceTurn(ns);
 }

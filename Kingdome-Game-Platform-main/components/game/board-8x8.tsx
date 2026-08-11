@@ -46,6 +46,24 @@ function RulePieceIcon({ pieceKey, fallback }: { pieceKey:string; fallback:strin
     style={{ width:"82%", height:"82%", objectFit:"contain", pointerEvents:"none" }}/>;
 }
 
+// Captured-piece sprite with a graceful glyph fallback if the sprite 404s —
+// same failed-flag pattern as RulePieceIcon above.
+function CapturedPieceIcon({ color, type }: { color:"white"|"black"; type:string }) {
+  const [failed, setFailed] = useState(false);
+  const src = PIECE_IMAGES[`${color}-${type}`];
+  if (failed || !src) {
+    return (
+      <span style={{ width:20, height:20, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, lineHeight:1, color: color==="white" ? "#e8dfc0" : "#c8a96e", filter:"drop-shadow(0 1px 3px rgba(0,0,0,.8))" }}>
+        ♟
+      </span>
+    );
+  }
+  return (
+    <img src={src} alt={type} onError={() => setFailed(true)}
+      style={{ width:20, height:20, objectFit:"contain", filter:"drop-shadow(0 1px 3px rgba(0,0,0,.8))" }}/>
+  );
+}
+
 // ─── SOUND ────────────────────────────────────────────────────────────────────
 function snd(type: string) {
   if (typeof window === "undefined") return;
@@ -307,12 +325,7 @@ function PlayerCard({ name, color, isMe, isActive, isCheck, captured }: {
       {captured.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
           {captured.slice(0, 10).map((p, i) => (
-            <img
-              key={i}
-              src={PIECE_IMAGES[`${p.color}-${p.type}`]}
-              alt={p.type}
-              style={{ width: 20, height: 20, objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,.8))" }}
-            />
+            <CapturedPieceIcon key={i} color={p.color} type={p.type} />
           ))}
           {captured.length > 10 && (
             <span style={{ fontSize: 12, color: `${ac}80` }}>+{captured.length - 10}</span>
@@ -323,11 +336,35 @@ function PlayerCard({ name, color, isMe, isActive, isCheck, captured }: {
   );
 }
 
+// ─── PRIMARY PANEL BUTTON ───────────────────────────────────────────────────────
+// Shared visual treatment for the 4 uniform controls: Pass Turn, Battle Guide,
+// Game Rules, Quit Game. Hover/active/disabled states live in the .pp-btn CSS
+// rules (see the <style> block below) so all 4 buttons behave identically.
+function PrimaryPanelButton({ icon, title, subtitle, onClick, disabled }: {
+  icon: React.ReactNode; title: string; subtitle?: string; onClick: () => void; disabled?: boolean;
+}) {
+  return (
+    <button className="pp-btn" onClick={onClick} disabled={disabled}>
+      <span className="pp-btn-icon">{icon}</span>
+      <span style={{ textAlign:"left", minWidth:0 }}>
+        <p style={{ margin:0, color:"#ffffff", fontWeight:800, textTransform:"uppercase", letterSpacing:".06em", fontSize:12 }}>
+          {title}
+        </p>
+        {subtitle && (
+          <p style={{ margin:"3px 0 0", color:"rgba(255,255,255,.55)", fontSize:10.5 }}>
+            {subtitle}
+          </p>
+        )}
+      </span>
+    </button>
+  );
+}
+
 // ─── ACTION PANEL ─────────────────────────────────────────────────────────────
-function ActionPanel({ isMyTurn, check, myColor, selectedIsPaladin, paladanSuperUsed, superMoveMode, passUsed, onSuperAttack, onPass }: {
+function ActionPanel({ isMyTurn, check, myColor, selectedIsPaladin, paladanSuperUsed, superMoveMode, onSuperAttack }: {
   isMyTurn:boolean; check:Color|null; myColor:Color;
   selectedIsPaladin:boolean; paladanSuperUsed:boolean; superMoveMode:boolean;
-  passUsed:boolean; onSuperAttack:()=>void; onPass:()=>void;
+  onSuperAttack:()=>void;
 }) {
   const inCheck = check === myColor;
   const ac = myColor === "white" ? "#e8dfc0" : "#c8a96e";
@@ -442,79 +479,6 @@ function ActionPanel({ isMyTurn, check, myColor, selectedIsPaladin, paladanSuper
   </button>
 )}
 
-      {/* Pass Turn button css */}
-    
-<button
-  onClick={() => {
-    if (!isMyTurn || passUsed) return;
-    onPass(); // This function should handle passing the turn
-  }}
-  style={{
-    width: "100%",
-    minHeight: 58,
-    padding: "12px 14px",
-    borderRadius: 16,
-    cursor: isMyTurn && !passUsed ? "pointer" : "default",
-    background: passUsed
-  ? "#000000"   // pure black
-  : "#1f1f1f",  // dark grey
-    border: "1px solid #7f4e7b", // Border matches button color
-    boxShadow: "none",  // No shadow effect
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    transition: "all .2s",
-    opacity: passUsed ? 0.72 : 1,
-    position: "relative",
-    overflow: "hidden",
-  }}
->
-  <span
-    style={{
-      width: 34,
-      height: 34,
-      borderRadius: 12,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontSize: 18,
-      background: passUsed
-  ? "#000000"  // black when pass is used
-  : "#000000", // black when it's my turn
-      border: "1px solid #7f4e7b", // Border matches button color
-      flexShrink: 0,
-    }}
-  >
-    🤝
-  </span>
-
-  <div style={{ textAlign: "left", minWidth: 0 }}>
-    <p
-      style={{
-        margin: 0,
-        fontSize: 11,
-        fontWeight: 800,
-        letterSpacing: ".12em",
-        textTransform: "uppercase",
-        color: passUsed ? "#ddd" : "#fff", // White text when active, gray when pass used
-      }}
-    >
-      {passUsed ? "Pass Used" : "Pass Turn"}
-    </p>
-    <p
-      style={{
-        margin: "3px 0 0",
-        fontSize: 10,
-        color: passUsed ? "#aaa" : "#ccc", // Lighter text for secondary info
-      }}
-    >
-      {isMyTurn
-        ? "Mexican Standoff — skip anytime"
-        : "Available on your turn"}
-    </p>
-  </div>
-</button>
-
     </div>
   );
 }
@@ -524,7 +488,7 @@ function ActionPanel({ isMyTurn, check, myColor, selectedIsPaladin, paladanSuper
 // A quick-reference popover matching the 12x12/16x16 Battle Guide: real piece
 // art from public/all-characters, one card per piece actually in this match,
 // hover (desktop) or tap (mobile) highlights that piece's abilities. This is
-// separate from the "Game Rules" modal (left panel), which stays the full
+// separate from the "Game Rules" modal (right panel), which stays the full
 // rulebook.
 const PIECE_GUIDE_INFO: Record<PieceType, { name:string; move:string; special:string }> = {
   king:    { name:"King",    move:"1 square in any direction",                 special:"Capturing him doesn't end the game — the fight goes on until an army is fully eliminated" },
@@ -576,30 +540,19 @@ function BattleGuideCard8x8({ pieceKey, info, has }: { pieceKey:PieceType; info:
 function BattleGuide8x8({ myColor, gs }: { myColor:Color; gs:GameState }) {
   const [open, setOpen] = useState(false);
   const ac = myColor === "white" ? "#e8dfc0" : "#c8a96e";
-  const glow = myColor === "white" ? "rgba(232,223,192,0.4)" : "rgba(200,169,110,0.4)";
   const myP = new Set<PieceType>();
   for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) { const p = gs.board[r][c]; if (p && p.color === myColor) myP.add(p.type); }
 
   return (
     <div style={{ position:"relative", width:"100%" }}>
-      <button
+      <PrimaryPanelButton
+        icon={open ? "✕" : "🧭"}
+        title={open ? "Close Guide" : "Battle Guide"}
         onClick={() => { setOpen(o => !o); snd("select"); }}
-        style={{
-          width:"100%", minHeight:50, padding:"11px 14px", borderRadius:14,
-          background: open ? "#050505" : "#000",
-          border:`1px solid ${open ? ac+"80" : ac+"45"}`,
-          color:"#fff", fontSize:11, cursor:"pointer", fontWeight:900,
-          letterSpacing:".13em", textTransform:"uppercase", fontFamily:"'Cinzel',Georgia,serif",
-          transition:"all .2s", display:"flex", alignItems:"center", justifyContent:"center", gap:9,
-          boxShadow: open ? `0 0 22px ${glow}, inset 0 1px 0 rgba(255,255,255,.12)` : "0 10px 22px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.08)",
-        }}
-      >
-        <span style={{ fontSize:16 }}>{open ? "✕" : "🧭"}</span>
-        <span>{open ? "Close Guide" : "Battle Guide"}</span>
-      </button>
+      />
 
       {open && (
-        <div style={{ position:"absolute", bottom:"110%", right:0, zIndex:70, width:"min(290px,90vw)", maxHeight:"420px", overflowY:"auto", padding:16, borderRadius:20, background:"#000", border:"1px solid rgba(255,255,255,.16)", boxShadow:`0 30px 90px rgba(0,0,0,.95), inset 0 1px 0 rgba(255,255,255,.14), 0 0 0 1px ${ac}30`, animation:"tipIn .2s ease both" }}>
+        <div data-lenis-prevent style={{ position:"absolute", bottom:"110%", right:0, zIndex:70, width:"min(290px,90vw)", maxHeight:"420px", overflowY:"auto", padding:16, borderRadius:20, background:"#000", border:"1px solid rgba(255,255,255,.16)", boxShadow:`0 30px 90px rgba(0,0,0,.95), inset 0 1px 0 rgba(255,255,255,.14), 0 0 0 1px ${ac}30`, animation:"tipIn .2s ease both" }}>
           <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14, paddingBottom:12, borderBottom:"1px solid rgba(255,255,255,.14)" }}>
             <span style={{ width:36, height:36, borderRadius:13, display:"flex", alignItems:"center", justifyContent:"center", background:"linear-gradient(145deg,#1b1b1b,#000)", border:"1px solid rgba(255,255,255,.18)", boxShadow:"inset 0 1px 0 rgba(255,255,255,.14), 0 8px 20px rgba(0,0,0,.75)", fontSize:18 }}>🧭</span>
             <div>
@@ -929,6 +882,11 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
         .csq:hover .cpi{transform:translate(-50%,-50%) scale(1.07) translateY(-2px);filter:drop-shadow(0 8px 18px rgba(0,0,0,.95)) drop-shadow(0 2px 8px rgba(212,168,67,.5));}
         .cpi{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:78%;height:78%;object-fit:contain;pointer-events:none;z-index:3;display:block;filter:drop-shadow(0 4px 10px rgba(0,0,0,.9)) drop-shadow(0 1px 3px rgba(0,0,0,.7));transition:transform .15s,filter .15s;}
         .sup-badge{position:absolute;bottom:3px;right:3px;width:13px;height:13px;border-radius:50%;background:rgba(180,50,50,.85);border:1px solid rgba(255,100,100,.5);display:flex;align-items:center;justify-content:center;font-size:7px;color:#fff;font-weight:700;z-index:5;pointer-events:none;}
+        .pp-btn{width:100%;display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:14px;background:linear-gradient(160deg,#5c3d1f 0%,#2a1a0a 100%);border:1px solid rgba(212,168,67,.35);box-shadow:0 8px 20px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.08);font-family:'Cinzel',Georgia,serif;cursor:pointer;transition:all .18s ease;transform:translateY(0);}
+        .pp-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 26px rgba(0,0,0,.55);background:linear-gradient(160deg,#6b4726 0%,#331f0d 100%);}
+        .pp-btn:active:not(:disabled){transform:translateY(0) scale(.98);}
+        .pp-btn:disabled{opacity:.5;cursor:default;}
+        .pp-btn-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:rgba(212,168,67,.18);border:1px solid rgba(212,168,67,.4);font-size:18px;}
       `}</style>
 
       <video autoPlay loop muted playsInline
@@ -975,86 +933,9 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
   }}
 >
           <PlayerCard name={opponentName} color={opponentColor} isMe={false} isActive={!isMyTurn} isCheck={gs.check===opponentColor} captured={myColor==="white"?gs.capturedByBlack:gs.capturedByWhite}/>
-          <ActionPanel isMyTurn={isMyTurn} check={gs.check} myColor={myColor} selectedIsPaladin={selectedIsPaladin} paladanSuperUsed={paladanSuperUsed} superMoveMode={gs.superMoveMode} passUsed={passUsed} onSuperAttack={handleSuperAttack} onPass={handlePass} />
+          <ActionPanel isMyTurn={isMyTurn} check={gs.check} myColor={myColor} selectedIsPaladin={selectedIsPaladin} paladanSuperUsed={paladanSuperUsed} superMoveMode={gs.superMoveMode} onSuperAttack={handleSuperAttack} />
            <MoveToast quality={toast} onDone={() => setToast(null)} />
           <PlayerCard name={playerName} color={myColor} isMe={true} isActive={isMyTurn} isCheck={gs.check===myColor} captured={myColor==="white"?gs.capturedByWhite:gs.capturedByBlack}/>
-           <div
-  style={{
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-    width: "100%",
-    marginTop: 8,
-    zIndex: 20,
-    position: "relative",
-  }}
->
-  <button
-    onClick={() => setShowRules(true)}
-    style={{
-      width: "100%",
-      height: 50,
-      background: "#080a08",
-      color: "#4ade80",
-      border: "1px solid rgba(74,222,128,.35)",
-      borderRadius: 12,
-      fontSize: 13,
-      fontWeight: 700,
-      cursor: "pointer",
-      display: "block",
-      letterSpacing: ".1em",
-      textTransform: "uppercase",
-      fontFamily: "'Cinzel',Georgia,serif",
-      boxShadow: "0 0 18px rgba(74,222,128,.25), 0 4px 16px rgba(0,0,0,.7), inset 0 1px 0 rgba(74,222,128,.15)",
-      transition: "all .2s",
-    }}
-    onMouseEnter={e => {
-      e.currentTarget.style.background = "rgba(74,222,128,.08)";
-      e.currentTarget.style.boxShadow = "0 0 28px rgba(74,222,128,.4), 0 4px 20px rgba(0,0,0,.8), inset 0 1px 0 rgba(74,222,128,.2)";
-      e.currentTarget.style.borderColor = "rgba(74,222,128,.6)";
-    }}
-    onMouseLeave={e => {
-      e.currentTarget.style.background = "#080a08";
-      e.currentTarget.style.boxShadow = "0 0 18px rgba(74,222,128,.25), 0 4px 16px rgba(0,0,0,.7), inset 0 1px 0 rgba(74,222,128,.15)";
-      e.currentTarget.style.borderColor = "rgba(74,222,128,.35)";
-    }}
-  >
-     Game Rules
-  </button>
-
-  <button
-    onClick={() => setShowQuitConfirm(true)}
-    style={{
-      width: "100%",
-      height: 50,
-      background: "#080808",
-      color: "#f87171",
-      border: "1px solid rgba(248,113,113,.3)",
-      borderRadius: 12,
-      fontSize: 13,
-      fontWeight: 700,
-      cursor: "pointer",
-      display: "block",
-      letterSpacing: ".1em",
-      textTransform: "uppercase",
-      fontFamily: "'Cinzel',Georgia,serif",
-      boxShadow: "0 0 18px rgba(248,113,113,.2), 0 4px 16px rgba(0,0,0,.7), inset 0 1px 0 rgba(248,113,113,.1)",
-      transition: "all .2s",
-    }}
-    onMouseEnter={e => {
-      e.currentTarget.style.background = "rgba(248,113,113,.07)";
-      e.currentTarget.style.boxShadow = "0 0 28px rgba(248,113,113,.35), 0 4px 20px rgba(0,0,0,.8), inset 0 1px 0 rgba(248,113,113,.15)";
-      e.currentTarget.style.borderColor = "rgba(248,113,113,.55)";
-    }}
-    onMouseLeave={e => {
-      e.currentTarget.style.background = "#080808";
-      e.currentTarget.style.boxShadow = "0 0 18px rgba(248,113,113,.2), 0 4px 16px rgba(0,0,0,.7), inset 0 1px 0 rgba(248,113,113,.1)";
-      e.currentTarget.style.borderColor = "rgba(248,113,113,.3)";
-    }}
-  >
-    Quit Game
-  </button>
-</div>
         </div>
 
         {/* ── BOARD ── */}
@@ -1237,6 +1118,23 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
     <ChatPanel myColor={myColor} messages={chat} onSend={sendChat} />
   </div>
   <BattleGuide8x8 myColor={myColor} gs={gs} />
+  <PrimaryPanelButton
+    icon="🤝"
+    title={passUsed ? "Pass Used" : "Pass Turn"}
+    subtitle={isMyTurn ? "Mexican Standoff — skip anytime" : "Available on your turn"}
+    onClick={handlePass}
+    disabled={!isMyTurn || passUsed}
+  />
+  <PrimaryPanelButton
+    icon="📜"
+    title="Game Rules"
+    onClick={() => setShowRules(true)}
+  />
+  <PrimaryPanelButton
+    icon="🏳️"
+    title="Quit Game"
+    onClick={() => setShowQuitConfirm(true)}
+  />
 </div>
 
         {/* ── OVERLAYS ── */}
@@ -1366,6 +1264,7 @@ export default function Board8x8({ myColor, roomId, playerName, opponentName, on
     `}</style>
 
     <div
+      data-lenis-prevent
       style={{
         width: "min(740px, 96vw)",
         maxHeight: "88vh",
