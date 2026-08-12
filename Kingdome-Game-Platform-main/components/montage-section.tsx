@@ -260,6 +260,20 @@ const characters: Character[] = [
     ],
   },
   {
+    name: "The Berserker",
+    tagline: "Summoned From Shadow. Feared By All.",
+    description:
+      "Unlike every other warrior in the army, the Berserker doesn't start the battle on the board — it isn't part of the normal starting formation at all. It only exists because the Conjurer chooses to call it forth, tearing it out of the shadows with a one-time Shadow Spell. From the instant it appears, nothing on the battlefield — mortal or immortal — can consider itself safe.",
+    image: "/all-characters/Beserker.png",
+    board: "16x16 Only",
+    abilities: [
+      { name: "Shadow Summon", effect: "The Conjurer's one-time Shadow Spell tears the Berserker into existence, placing it on the square directly in front of the Conjurer.", note: "If that square is already occupied, the nearest available square is used instead. The Conjurer can only summon one Berserker per game." },
+      { name: "Relentless Slide", effect: "Moves and strikes an unlimited number of squares in any of the eight directions — horizontally, vertically, and diagonally." },
+      { name: "Death Incarnate", effect: "Can kill both mortal, human pieces and immortal, ethereal pieces such as the Wizard and Sorceress — a privilege no other piece shares.", note: "Immortal/ethereal pieces cannot kill the Berserker in return; only mortal pieces and monsters can bring it down." },
+      { name: "Rampage Attack", effect: "Cleaves through up to two adjacent enemy pieces in a single strike, aligned horizontally, vertically, or diagonally from where the Berserker stands.", note: "Usable only once per Berserker, per game." },
+    ],
+  },
+  {
     name: "The Warlock",
     tagline: "One Chain. Every Enemy Frozen.",
     description:
@@ -611,7 +625,7 @@ export function MontageSection() {
           >
             Warriors of<br />the Realm
           </h2>
-          <p className="text-base sm:text-lg max-w-2xl mx-auto mb-8" style={{ color: "rgba(232,223,200,0.5)" }}>24 legendary characters. Each with unique powers.<br />Only one kingdom survives.</p>
+          <p className="text-base sm:text-lg max-w-2xl mx-auto mb-8" style={{ color: "rgba(232,223,200,0.5)" }}>25 legendary characters. Each with unique powers.<br />Only one kingdom survives.</p>
           <div className="mx-auto" style={{ width: "120px", height: "1px", background: "linear-gradient(90deg, transparent, #c9a84c, transparent)" }} />
         </div>
 

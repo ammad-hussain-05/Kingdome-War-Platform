@@ -26,6 +26,8 @@ const characters = [
   { name: "Archer",          file: "/all-characters/Archer.png",          num: "21" },
   { name: "Assassin",        file: "/all-characters/Assassin.png",        num: "22" },
   { name: "Paladin",         file: "/all-characters/Paladin.png",         num: "23" },
+  { name: "Berserker",       file: "/all-characters/Beserker.png",        num: "24",
+    description: "Summoned only once by the Conjurer's Shadow Spell — never part of the starting army — the Berserker slides freely in every direction and is the sole piece able to kill both mortal and immortal/ethereal characters, while immortals can never kill it back. Its one-time Rampage Attack cleaves through two adjacent enemies in a single strike." },
 ]
 
 const TOTAL = characters.length
