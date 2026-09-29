@@ -2,6 +2,8 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import BoardAccessBadge from "@/components/lobby/board-access-badge";
+import { GameMode } from "@/lib/lobby/types";
 
 const MODES = [
   {
@@ -135,6 +137,12 @@ function GameModesContent() {
                   {mode.players}
                 </span>
               </div>
+
+              <BoardAccessBadge
+                mode={mode.id as GameMode}
+                variant="selection"
+                style={{ marginBottom: 12 }}
+              />
 
               <h2
                 className="text-2xl font-bold mb-3"

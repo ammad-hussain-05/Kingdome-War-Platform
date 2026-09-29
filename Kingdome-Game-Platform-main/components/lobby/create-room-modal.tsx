@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { connectSocket } from "@/lib/lobby/socket-client";
 import { GameMode, MODE_CONFIG } from "@/lib/lobby/types";
 import { useLoader } from '@/components/global-loader-provider'
+import BoardAccessBadge from "./board-access-badge";
 
 const MODE_ICONS: Record<GameMode, string> = {
   "8x8": "/icons/basic.png",
@@ -378,6 +379,8 @@ export default function CreateRoomModal({ onClose }: { onClose: () => void }) {
                     }}>
                       {cfg.description}
                     </div>
+
+                    <BoardAccessBadge mode={mode} variant="lobby" style={{marginTop:9}}/>
                   </div>
 
                   <span style={{

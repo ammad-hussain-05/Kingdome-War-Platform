@@ -9,6 +9,7 @@ import { createSocket } from "@/lib/lobby/socket-client";
 import { getActiveSocket, setActiveSocket } from "@/lib/lobby/room-store";
 import { Footer } from "@/components/footer";
 import { DisclaimerFeedback } from "@/components/disclaimer-feedback";
+import BoardAccessBadge from "@/components/lobby/board-access-badge";
 
 const MODE_COLORS: Record<string,string> = {
   "8x8": "#d4a843",
@@ -190,6 +191,8 @@ export default function RoomPage() {
                 {mode ? MODE_CONFIG[mode].label : "Room"} · {mode}
               </span>
             </div>
+
+            {mode && <BoardAccessBadge mode={mode} variant="selection" style={{ marginBottom: 14 }} />}
 
           <h1
   style={{

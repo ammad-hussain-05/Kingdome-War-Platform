@@ -4,10 +4,11 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getActiveSocket, setActiveSocket } from "@/lib/lobby/room-store";
 import { createSocket } from "@/lib/lobby/socket-client";
-import { Room } from "@/lib/lobby/types";
+import { Room, GameMode } from "@/lib/lobby/types";
 import { getModeFromRoomId } from "@/lib/lobby/id-generator";
 import { Footer } from "@/components/footer";
 import { DisclaimerFeedback } from "@/components/disclaimer-feedback";
+import BoardAccessBadge from "@/components/lobby/board-access-badge";
 
 const MODES = [
   {
@@ -434,6 +435,12 @@ export default function GamePage() {
                   </div>
 
                   <div style={{ position: "relative", zIndex: 5 }}>
+                    <BoardAccessBadge
+                      mode={mode.id as GameMode}
+                      variant="lobby"
+                      style={{ flexDirection: "column", alignItems: "flex-start", gap: 5, marginBottom: 16 }}
+                    />
+
                     <div
                       className="battle-icon"
                       style={{
