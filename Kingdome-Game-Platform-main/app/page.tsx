@@ -4,6 +4,7 @@ import { StorySection } from "@/components/story-section"
 import CharactersSection  from "@/components/characters-section"
 import { GameModesSection } from "@/components/game-modes-section"
 import { RulesSection } from "@/components/rules-section"
+import { CharacterRulesSection } from "@/components/character-rules-section"
 import { GameCanvas } from "@/components/game-canvas"
 import { OrderSection } from "@/components/order-section"
 import { FanClubSection } from "@/components/fan-club-section"
@@ -19,6 +20,7 @@ export default function KingdomComePage() {
       <MontageSection />
       <CharactersSection />
       <RulesSection />
+      <CharacterRulesSection />
       <GameCanvas />
       <GameModesSection />
        <OrderSection />
